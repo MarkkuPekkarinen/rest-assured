@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -928,6 +928,79 @@ class ScalatraRestExample extends ScalatraServlet {
         <p>paragraph 2</p>
       </body>
     </html>
+  }
+
+  get("/response") {
+    """{
+      |  "response": {
+      |    "status": 200,
+      |    "startRow": 0,
+      |    "endRow": 1,
+      |    "totalRows": 1,
+      |    "next": "",
+      |    "data": {
+      |      "id": "workflow-1",
+      |      "name": "SampleWorkflow",
+      |      "tasks": [
+      |        {
+      |          "id": "task-0",
+      |          "name": "AWX",
+      |          "triggered_by": ["task-5"]
+      |        },
+      |        {
+      |          "id": "task-1",
+      |          "name": "BrainStorming",
+      |          "triggered_by": ["task-2", "task-5"]
+      |        },
+      |        {
+      |          "id": "task-2",
+      |          "name": "OnHold",
+      |          "triggered_by": ["task-0", "task-4", "task-7", "task-8", "task9"]
+      |        },
+      |        {
+      |          "id": "task-3",
+      |          "name": "InvestigateSuggestions",
+      |          "triggered_by": ["task-6"]
+      |        },
+      |        {
+      |          "id": "task-4",
+      |          "name": "Mistral",
+      |          "triggered_by": ["task-3"]
+      |        },
+      |        {
+      |          "id": "task-5",
+      |          "name": "Ansible",
+      |          "triggered_by": ["task-3"]
+      |        },
+      |        {
+      |          "id": "task-6",
+      |          "name": "Integration",
+      |          "triggered_by": []
+      |        },
+      |        {
+      |          "id": "task-7",
+      |          "name": "Tower",
+      |          "triggered_by": ["task-5"]
+      |        },
+      |        {
+      |          "id": "task-8",
+      |          "name": "Camunda",
+      |          "triggered_by": ["task-3"]
+      |        },
+      |        {
+      |          "id": "task-9",
+      |          "name": "HungOnMistral",
+      |          "triggered_by": ["task-0", "task-7"]
+      |        },
+      |        {
+      |          "id": "task-10",
+      |          "name": "MistralIsChosen",
+      |          "triggered_by": ["task-1"]
+      |        }
+      |      ]
+      |    }
+      |  }
+      |}""".stripMargin('|')
   }
 
   get("/textHTML-not-formatted") {
