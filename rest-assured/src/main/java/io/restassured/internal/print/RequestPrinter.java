@@ -46,9 +46,11 @@ public class RequestPrinter {
     private static final String TAB = "\t";
     private static final String EQUALS = "=";
     private static final String NONE = "<none>";
+    private static final String BLACKLISTED = "[ BLACKLISTED ]";
 
     public static String print(FilterableRequestSpecification requestSpec, String requestMethod, String completeRequestUri,
-                               LogDetail logDetail, PrintStream stream, boolean shouldPrettyPrint) {
+                               LogDetail logDetail, Set<String> blacklistedHeaders,
+                               PrintStream stream, boolean shouldPrettyPrint) {
         final StringBuilder builder = new StringBuilder();
         if (logDetail == ALL || logDetail == METHOD) {
             addSingle(builder, "Request method:", requestMethod);
@@ -67,7 +69,7 @@ public class RequestPrinter {
         }
 
         if (logDetail == ALL || logDetail == HEADERS) {
-            addHeaders(requestSpec, builder);
+            addHeaders(requestSpec, blacklistedHeaders, builder);
         }
         if (logDetail == ALL || logDetail == COOKIES) {
             addCookies(requestSpec, builder);
@@ -130,7 +132,8 @@ public class RequestPrinter {
         }
     }
 
-    private static void addHeaders(FilterableRequestSpecification requestSpec, StringBuilder builder) {
+    private static void addHeaders(FilterableRequestSpecification requestSpec, Set<String> blacklistedHeaders,
+                                   StringBuilder builder) {
         builder.append("Headers:");
         final Headers headers = requestSpec.getHeaders();
         if (!headers.exist()) {
@@ -143,7 +146,11 @@ public class RequestPrinter {
                 } else {
                     appendFourTabs(builder);
                 }
-                builder.append(header).append(SystemUtils.LINE_SEPARATOR);
+                Header processedHeader = header;
+                if (blacklistedHeaders.contains(header.getName())) {
+                    processedHeader = new Header(header.getName(), BLACKLISTED);
+                }
+                builder.append(processedHeader).append(SystemUtils.LINE_SEPARATOR);
             }
         }
     }

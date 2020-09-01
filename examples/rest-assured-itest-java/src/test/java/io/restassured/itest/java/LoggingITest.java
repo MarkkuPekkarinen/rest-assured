@@ -17,6 +17,7 @@
 package io.restassured.itest.java;
 
 import io.restassured.RestAssured;
+import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.builder.ResponseBuilder;
 import io.restassured.config.LogConfig;
 import io.restassured.filter.Filter;
@@ -33,6 +34,7 @@ import io.restassured.parsing.Parser;
 import io.restassured.response.Response;
 import io.restassured.specification.FilterableRequestSpecification;
 import io.restassured.specification.FilterableResponseSpecification;
+import io.restassured.specification.RequestSpecification;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.WriterOutputStream;
 import org.apache.commons.lang3.SystemUtils;
@@ -1191,46 +1193,46 @@ public class LoggingITest extends WithJetty {
                         "Content-Length: ")),
                 endsWith(String.format("Server: Jetty(9.3.2.v20150730)%n" +
                         "%n" +
-                        "<!--%n" +
-                        "  ~ Copyright 2019 the original author or authors.%n" +
-                        "  ~%n" +
-                        "  ~ Licensed under the Apache License, Version 2.0 (the \"License\");%n" +
-                        "  ~ you may not use this file except in compliance with the License.%n" +
-                        "  ~ You may obtain a copy of the License at%n" +
-                        "  ~%n" +
-                        "  ~        http://www.apache.org/licenses/LICENSE-2.0%n" +
-                        "  ~%n" +
-                        "  ~ Unless required by applicable law or agreed to in writing, software%n" +
-                        "  ~ distributed under the License is distributed on an \"AS IS\" BASIS,%n" +
-                        "  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.%n" +
-                        "  ~ See the License for the specific language governing permissions and%n" +
-                        "  ~ limitations under the License.%n" +
-                        "  -->%n" +
-                        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">%n" +
-                        "  <xs:element name=\"records\">%n" +
-                        "    <xs:complexType>%n" +
-                        "      <xs:sequence>%n" +
-                        "        <xs:element maxOccurs=\"unbounded\" ref=\"car\"/>%n" +
-                        "      </xs:sequence>%n" +
-                        "    </xs:complexType>%n" +
-                        "  </xs:element>%n" +
-                        "  <xs:element name=\"car\">%n" +
-                        "    <xs:complexType>%n" +
-                        "      <xs:sequence>%n" +
-                        "        <xs:element ref=\"country\"/>%n" +
-                        "        <xs:element ref=\"record\"/>%n" +
-                        "      </xs:sequence>%n" +
-                        "      <xs:attribute name=\"make\" use=\"required\" type=\"xs:NCName\"/>%n" +
-                        "      <xs:attribute name=\"name\" use=\"required\"/>%n" +
-                        "      <xs:attribute name=\"year\" use=\"required\" type=\"xs:integer\"/>%n" +
-                        "    </xs:complexType>%n" +
-                        "  </xs:element>%n" +
-                        "  <xs:element name=\"country\" type=\"xs:string\"/>%n" +
-                        "  <xs:element name=\"record\">%n" +
-                        "    <xs:complexType mixed=\"true\">%n" +
-                        "      <xs:attribute name=\"type\" use=\"required\" type=\"xs:NCName\"/>%n" +
-                        "    </xs:complexType>%n" +
-                        "  </xs:element>%n" +
+                        "<!--\n" +
+                        "  ~ Copyright 2019 the original author or authors.\n" +
+                        "  ~\n" +
+                        "  ~ Licensed under the Apache License, Version 2.0 (the \"License\");\n" +
+                        "  ~ you may not use this file except in compliance with the License.\n" +
+                        "  ~ You may obtain a copy of the License at\n" +
+                        "  ~\n" +
+                        "  ~        http://www.apache.org/licenses/LICENSE-2.0\n" +
+                        "  ~\n" +
+                        "  ~ Unless required by applicable law or agreed to in writing, software\n" +
+                        "  ~ distributed under the License is distributed on an \"AS IS\" BASIS,\n" +
+                        "  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n" +
+                        "  ~ See the License for the specific language governing permissions and\n" +
+                        "  ~ limitations under the License.\n" +
+                        "  -->\n" +
+                        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n" +
+                        "  <xs:element name=\"records\">\n" +
+                        "    <xs:complexType>\n" +
+                        "      <xs:sequence>\n" +
+                        "        <xs:element maxOccurs=\"unbounded\" ref=\"car\"/>\n" +
+                        "      </xs:sequence>\n" +
+                        "    </xs:complexType>\n" +
+                        "  </xs:element>\n" +
+                        "  <xs:element name=\"car\">\n" +
+                        "    <xs:complexType>\n" +
+                        "      <xs:sequence>\n" +
+                        "        <xs:element ref=\"country\"/>\n" +
+                        "        <xs:element ref=\"record\"/>\n" +
+                        "      </xs:sequence>\n" +
+                        "      <xs:attribute name=\"make\" use=\"required\" type=\"xs:NCName\"/>\n" +
+                        "      <xs:attribute name=\"name\" use=\"required\"/>\n" +
+                        "      <xs:attribute name=\"year\" use=\"required\" type=\"xs:integer\"/>\n" +
+                        "    </xs:complexType>\n" +
+                        "  </xs:element>\n" +
+                        "  <xs:element name=\"country\" type=\"xs:string\"/>\n" +
+                        "  <xs:element name=\"record\">\n" +
+                        "    <xs:complexType mixed=\"true\">\n" +
+                        "      <xs:attribute name=\"type\" use=\"required\" type=\"xs:NCName\"/>\n" +
+                        "    </xs:complexType>\n" +
+                        "  </xs:element>\n" +
                         "</xs:schema>%n"))
         ));
     }
@@ -1416,5 +1418,88 @@ public class LoggingITest extends WithJetty {
                 statusCode(200);
 
         assertThat(writer.toString(), equalTo(String.format("200%nContent-Type: application/xml%n")));
+    }
+
+    @Test public void
+    its_possible_to_hide_request_headers_when_blacklist_is_defined_using_a_request_spec_builder() {
+        final StringWriter writer = new StringWriter();
+        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+        final RequestSpecification spec = new RequestSpecBuilder()
+                .setConfig(newConfig()
+                        .logConfig(logConfig().defaultStream(captor).blacklistHeader("Accept")))
+                .and()
+                .log(ALL)
+                .build();
+
+        given().
+                spec(spec).
+                pathParam("firstName", "John").
+                pathParam("lastName", "Doe").
+        when().
+                get("/{firstName}/{lastName}").
+        then().
+                body("fullName", equalTo("John Doe"));
+
+        assertThat(writer.toString(), equalTo(String.format("Request method:\tGET%n" +
+                "Request URI:\thttp://localhost:8080/John/Doe%n" +
+                "Proxy:\t\t\t<none>%n" +
+                "Request params:\t<none>%n" +
+                "Query params:\t<none>%n" +
+                "Form params:\t<none>%n" +
+                "Path params:\tfirstName=John%n" +
+                "\t\t\t\tlastName=Doe%n" +
+                "Headers:\t\tAccept=[ BLACKLISTED ]%n" +
+                "Cookies:\t\t<none>%n" +
+                "Multiparts:\t\t<none>%n" +
+                "Body:\t\t\t<none>%n")));
+    }
+
+    @Test public void
+    its_possible_to_hide_request_headers_when_blacklist_is_defined_in_log_config_from_request_specification() {
+        final StringWriter writer = new StringWriter();
+        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+
+        given().
+                config(config().logConfig(logConfig().defaultStream(captor).blacklistHeader("Accept"))).
+                log().all().
+                pathParam("firstName", "John").
+                pathParam("lastName", "Doe").
+        when().
+                get("/{firstName}/{lastName}").
+        then().
+                body("fullName", equalTo("John Doe"));
+
+        assertThat(writer.toString(), equalTo(String.format("Request method:\tGET%n" +
+                "Request URI:\thttp://localhost:8080/John/Doe%n" +
+                "Proxy:\t\t\t<none>%n" +
+                "Request params:\t<none>%n" +
+                "Query params:\t<none>%n" +
+                "Form params:\t<none>%n" +
+                "Path params:\tfirstName=John%n" +
+                "\t\t\t\tlastName=Doe%n" +
+                "Headers:\t\tAccept=[ BLACKLISTED ]%n" +
+                "Cookies:\t\t<none>%n" +
+                "Multiparts:\t\t<none>%n" +
+                "Body:\t\t\t<none>%n")));
+    }
+
+    @Test public void
+    its_possible_to_hide_response_headers_when_blacklist_is_defined_in_log_config_from_request_specification() {
+        final StringWriter writer = new StringWriter();
+        final PrintStream captor = new PrintStream(new WriterOutputStream(writer), true);
+
+        given().
+                config(config().logConfig(logConfig().defaultStream(captor).blacklistHeader("MultiHeader"))).
+        when().
+                get("/multiValueHeader").
+        then().
+                log().all();
+
+        assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
+                "Content-Type: text/plain;charset=utf-8%n" +
+                "MultiHeader: [ BLACKLISTED ]%n" +
+                "MultiHeader: [ BLACKLISTED ]%n" +
+                "Content-Length: 0%n" +
+                "Server: Jetty(9.3.2.v20150730)%n")));
     }
 }

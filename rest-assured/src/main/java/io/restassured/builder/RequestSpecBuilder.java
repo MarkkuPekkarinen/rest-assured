@@ -44,6 +44,7 @@ import java.security.KeyStore;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static io.restassured.RestAssured.*;
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
@@ -1036,7 +1037,9 @@ public class RequestSpecBuilder {
         PrintStream printStream = logConfig.defaultStream();
         boolean prettyPrintingEnabled = logConfig.isPrettyPrintingEnabled();
         boolean shouldUrlEncodeRequestUri = logConfig.shouldUrlEncodeRequestUri();
-        spec.filter(new RequestLoggingFilter(logDetail, prettyPrintingEnabled, printStream, shouldUrlEncodeRequestUri));
+        Set<String> blacklistedHeaders = logConfig.blacklistedHeaders();
+
+        spec.filter(new RequestLoggingFilter(logDetail, prettyPrintingEnabled, printStream, shouldUrlEncodeRequestUri, blacklistedHeaders));
         return this;
     }
 

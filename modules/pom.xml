@@ -19,7 +19,7 @@
     <parent>
         <artifactId>rest-assured-parent</artifactId>
         <groupId>io.rest-assured</groupId>
-        <version>4.1.3-SNAPSHOT</version>
+        <version>4.3.2-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
     <artifactId>modules</artifactId>
@@ -32,5 +32,6 @@
         <module>spring-web-test-client</module>
         <module>spring-commons</module>
         <module>kotlin-extensions</module>
+        <module>spring-mock-mvc-kotlin-extensions</module>
     </modules>
 </project>

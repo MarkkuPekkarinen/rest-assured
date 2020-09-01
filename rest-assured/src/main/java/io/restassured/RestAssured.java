@@ -27,6 +27,7 @@ import io.restassured.internal.*;
 import io.restassured.internal.common.assertion.AssertParameter;
 import io.restassured.internal.log.LogRepository;
 import io.restassured.mapper.ObjectMapper;
+import io.restassured.mapper.ObjectMapperType;
 import io.restassured.matcher.RestAssuredMatchers;
 import io.restassured.parsing.Parser;
 import io.restassured.path.json.JsonPath;
@@ -551,17 +552,6 @@ public class RestAssured {
     }
 
     /**
-     * Set a object mapper that'll be used when serializing and deserializing Java objects to and from it's
-     * document representation (XML, JSON etc).
-     *
-     * @param objectMapper The object mapper to use.
-     */
-    public static void objectMapper(ObjectMapper objectMapper) {
-        Validate.notNull(objectMapper, "Default object mapper cannot be null");
-        config = config().objectMapperConfig(ObjectMapperConfig.objectMapperConfig().defaultObjectMapper(objectMapper));
-    }
-
-    /**
      * Start building the response part of the test io.restassured.specification. E.g.
      * <p/>
      * <pre>
@@ -613,7 +603,7 @@ public class RestAssured {
      *          ..
      * </pre>
      * <p/>
-     * The key and arguments follows the standard <a href="http://download.oracle.com/javase/1,5.0/docs/api/java/util/Formatter.html#syntax">formatting syntax</a> of Java.
+     * The key and arguments follows the standard <a href="https://docs.oracle.com/javase/7/docs/api/java/util/Formatter.html#syntax">formatting syntax</a> of Java.
      *
      * @return A list of arguments.
      */

@@ -24,6 +24,7 @@ import com.github.scribejava.core.oauth.OAuth20Service;
 import com.github.scribejava.core.oauth.OAuthService;
 import io.restassured.authentication.OAuthSignature;
 import io.restassured.internal.TrustAndKeystoreSpecImpl;
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.http.*;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.NTCredentials;
@@ -238,7 +239,7 @@ public class AuthConfig {
                            String accessToken, String secretToken, OAuthSignature signature, Boolean addEmptyTokenToBaseString) {
 
             this.oauthConfig = new OAuthConfig(consumerKey, consumerSecret,
-                    null, getOAuthSigntureType(signature), null, null, null, null, null, null, null);
+                    null, getOAuthSignatureType(signature), null, null, null, null, null, null, null);
             this.token = new OAuth1AccessToken(accessToken, secretToken);
             this.signature = signature;
             this.addEmptyTokenToBaseString = addEmptyTokenToBaseString;
@@ -252,10 +253,13 @@ public class AuthConfig {
 
         public void process(HttpRequest request, HttpContext ctx) throws HttpException, IOException {
             try {
+                Verb verb = EnumUtils.getEnum(Verb.class, request.getRequestLine().getMethod().toUpperCase());
+                if (verb == null)
+                    return;
+
                 HttpHost host = (HttpHost) ctx.getAttribute(ExecutionContext.HTTP_TARGET_HOST);
                 final URI requestURI = new URI(host.toURI()).resolve(request.getRequestLine().getUri());
 
-                Verb verb = Verb.valueOf(request.getRequestLine().getMethod().toUpperCase());
                 OAuthRequest oauthRequest = new OAuthRequest(verb, requestURI.toString(), null);
                 this.service = (OAuth10aService) getOauthService(isOAuth1, addEmptyTokenToBaseString);
 
@@ -330,7 +334,7 @@ public class AuthConfig {
             return service;
         }
 
-        private static SignatureType getOAuthSigntureType(OAuthSignature signature) {
+        private static SignatureType getOAuthSignatureType(OAuthSignature signature) {
             SignatureType signatureType;
             if (signature == OAuthSignature.HEADER)
                 signatureType = SignatureType.Header;
