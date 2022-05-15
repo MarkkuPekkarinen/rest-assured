@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-package io.restassured.internal.path.json
+package io.restassured.path.xml.mapper.factory;
 
-import groovy.json.JsonOutput
-import org.apache.commons.lang3.text.translate.UnicodeUnescaper
+import io.restassured.common.mapper.factory.ObjectMapperFactory;
 
-class JsonPrettifier {
 
-  static def String prettifyJson(String json) {
-    def prettified = JsonOutput.prettyPrint(json)
-    new UnicodeUnescaper().translate(prettified)
-  }
+/**
+ * Interface for JAXB object mappers. Implement this class and register it to the ObjectMapperConfig if you
+ * want to override default settings for the JAXB object mapper.
+ */
+public interface JakartaEEObjectMapperFactory extends ObjectMapperFactory<jakarta.xml.bind.JAXBContext> {
 }

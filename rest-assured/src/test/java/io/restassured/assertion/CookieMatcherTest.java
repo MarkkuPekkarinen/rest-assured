@@ -18,17 +18,20 @@ package io.restassured.assertion;
 
 import io.restassured.http.Cookie;
 import io.restassured.http.Cookies;
+import io.restassured.internal.assertion.CookieMatcher;
 import org.hamcrest.Matchers;
 import org.junit.Test;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
 
 /**
  * @author Sergey Podgurskiy
@@ -36,11 +39,11 @@ import static org.junit.Assert.assertThat;
 public class CookieMatcherTest {
     @Test
     public void testSetVersion() throws ParseException {
-        String[] cookies = new String[]{
+        List<String> cookies = Arrays.asList(
                 "DEVICE_ID=123; Domain=.test.com; Expires=Thu, 12-Oct-2023 09:34:31 GMT; Path=/; Secure; HttpOnly; SameSite=Lax",
                 "SPRING_SECURITY_REMEMBER_ME_COOKIE=12345;Version=0;Domain=.test.com;Path=/;Max-Age=1209600",
                 "COOKIE_WITH_ZERO_MAX_AGE=1234;Version=0;Domain=.test.com;Path=/;Max-Age=0",
-                "COOKIE_WITH_NEGATIVE_MAX_AGE=123456;Version=0;Domain=.test.com;Path=/;Max-Age=-1"};
+                "COOKIE_WITH_NEGATIVE_MAX_AGE=123456;Version=0;Domain=.test.com;Path=/;Max-Age=-1");
 
         Cookies result = CookieMatcher.getCookies(cookies);
         assertEquals(4, result.size());
@@ -50,25 +53,25 @@ public class CookieMatcherTest {
         assertEquals("12345", sprintCookie.getValue());
         assertEquals(".test.com", sprintCookie.getDomain());
         assertEquals("/", sprintCookie.getPath());
-        assertEquals(1209600, sprintCookie.getMaxAge());
+        assertEquals(1209600L, sprintCookie.getMaxAge());
         assertEquals(false, sprintCookie.isSecured());
         assertEquals(false, sprintCookie.isHttpOnly());
 
         Cookie cookieWithZeroMaxAge = result.get("COOKIE_WITH_ZERO_MAX_AGE");
-        assertEquals(0, cookieWithZeroMaxAge.getVersion());
+        assertEquals(0L, cookieWithZeroMaxAge.getVersion());
         assertEquals("1234", cookieWithZeroMaxAge.getValue());
         assertEquals(".test.com", cookieWithZeroMaxAge.getDomain());
         assertEquals("/", cookieWithZeroMaxAge.getPath());
-        assertEquals(0, cookieWithZeroMaxAge.getMaxAge());
+        assertEquals(0L, cookieWithZeroMaxAge.getMaxAge());
         assertEquals(false, cookieWithZeroMaxAge.isSecured());
         assertEquals(false, cookieWithZeroMaxAge.isHttpOnly());
 
         Cookie cookieWithNegativeMaxAge = result.get("COOKIE_WITH_NEGATIVE_MAX_AGE");
-        assertEquals(0, cookieWithNegativeMaxAge.getVersion());
+        assertEquals(0L, cookieWithNegativeMaxAge.getVersion());
         assertEquals("123456", cookieWithNegativeMaxAge.getValue());
         assertEquals(".test.com", cookieWithNegativeMaxAge.getDomain());
         assertEquals("/", cookieWithNegativeMaxAge.getPath());
-        assertEquals(-1, cookieWithNegativeMaxAge.getMaxAge());
+        assertEquals(-1L, cookieWithNegativeMaxAge.getMaxAge());
         assertEquals(false, cookieWithNegativeMaxAge.isSecured());
         assertEquals(false, cookieWithNegativeMaxAge.isHttpOnly());
 
@@ -81,20 +84,18 @@ public class CookieMatcherTest {
         assertEquals(true, deviceCookie.isSecured());
         assertEquals(true, deviceCookie.isHttpOnly());
         assertEquals("Lax", deviceCookie.getSameSite());
-
     }
 
     @Test public void
     deals_with_empty_cookie_values() {
         // Given
-        String[] cookiesAsString = new String[]{
-                "un=bob; domain=bob.com; path=/", "", "_session_id=asdfwerwersdfwere; domain=bob.com; path=/; HttpOnly"};
+        List<String> cookiesAsString = Arrays.asList("un=bob; domain=bob.com; path=/", "", "_session_id=asdfwerwersdfwere; domain=bob.com; path=/; HttpOnly");
 
         // When
         Cookies cookies = CookieMatcher.getCookies(cookiesAsString);
 
         // Then
         assertThat(cookies.size(), is(3));
-        assertThat(cookies, Matchers.<Cookie>hasItem(nullValue()));
+        assertThat(cookies, Matchers.hasItem(nullValue()));
     }
 }

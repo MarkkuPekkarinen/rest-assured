@@ -53,7 +53,7 @@ class SpecificationMerger {
     thisOne.contentType = with.contentType
     thisOne.rpr.defaultParser = with.rpr.defaultParser
     thisOne.rpr.additional.putAll(with.rpr.additional)
-    thisOne.bodyMatchers << with.bodyMatchers
+    thisOne.bodyMatchers.add(with.bodyMatchers)
     thisOne.bodyRootPath = with.bodyRootPath
     thisOne.cookieAssertions.addAll(with.cookieAssertions)
     thisOne.expectedStatusCode = with.expectedStatusCode
@@ -74,6 +74,7 @@ class SpecificationMerger {
    *     <li>URL Encoding enabled/disabled</li>
    *     <li>Config</li>
    *     <li>Proxy Specification</li>
+   *     <li>Content-Type allowed/disallowed</li>
    * </ul>
    * The following settings are merged:
    * <ul>
@@ -105,6 +106,7 @@ class SpecificationMerger {
     thisOne.requestBody = with.requestBody
     mergeFilters(thisOne, with)
     thisOne.urlEncodingEnabled = with.urlEncodingEnabled
+    thisOne.allowContentType = with.allowContentType
     thisOne.proxySpecification = with.proxySpecification
     thisOne.method = with.method
     thisOne.unnamedPathParamsTuples = with.unnamedPathParamValues

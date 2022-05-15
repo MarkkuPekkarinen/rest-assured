@@ -37,8 +37,8 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static io.restassured.filter.log.LogDetail.ALL;
 import static java.util.Arrays.asList;
 import static org.apache.http.HttpStatus.SC_OK;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertThat;
 
 public class SpecificationBuilderITest extends WithJetty {
 
@@ -384,7 +384,7 @@ public class SpecificationBuilderITest extends WithJetty {
         assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.3.2.v20150730)%n" +
+                "Server: Jetty(9.4.34.v20201102)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
@@ -411,7 +411,7 @@ public class SpecificationBuilderITest extends WithJetty {
         assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.3.2.v20150730)%n" +
+                "Server: Jetty(9.4.34.v20201102)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
@@ -479,9 +479,9 @@ public class SpecificationBuilderITest extends WithJetty {
 
     @Test
     public void mergesStaticallyDefinedRequestSpecificationsCorrectly() {
-        RestAssured.requestSpecification = new RequestSpecBuilder().addCookie("Cookie1", "Value1").build();
         RequestSpecification reqSpec1 = new RequestSpecBuilder().addCookie("Cookie2", "Value2").build();
         RequestSpecification reqSpec2 = new RequestSpecBuilder().addCookie("Cookie3", "Value3").build();
+        RestAssured.requestSpecification = new RequestSpecBuilder().addCookie("Cookie1", "Value1").build();
 
         try {
             Cookies cookies =

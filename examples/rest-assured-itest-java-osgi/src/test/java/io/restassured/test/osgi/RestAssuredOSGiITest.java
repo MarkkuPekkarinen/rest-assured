@@ -16,6 +16,7 @@
 
 package io.restassured.test.osgi;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.Configuration;
@@ -51,18 +52,18 @@ public class RestAssuredOSGiITest {
                         mavenBundle().groupId("org.apache.aries.spifly").artifactId("org.apache.aries.spifly.dynamic.bundle").version("1.2.1"),
                         mavenBundle().groupId("org.hamcrest").artifactId("hamcrest").versionAsInProject(),
                         mavenBundle().groupId("org.apache.commons").artifactId("commons-lang3").versionAsInProject(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy").versionAsInProject(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy").versionAsInProject(),
 
                         wrappedBundle(mavenBundle().groupId("org.ccil.cowan.tagsoup").artifactId("tagsoup").versionAsInProject()),
                         wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpclient").versionAsInProject()),
                         wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpmime").versionAsInProject()),
                         wrappedBundle(mavenBundle("org.apache.httpcomponents", "httpcore").versionAsInProject()),
-                        wrappedBundle(mavenBundle("jakarta.xml.bind", "jakarta.xml.bind-api").versionAsInProject()),
+                        mavenBundle("javax.xml.bind", "jaxb-api").versionAsInProject(),
                         wrappedBundle(mavenBundle("javax.activation", "activation").version("1.1.1")),
 
-                        /* Rest Assured dependencie needed in the Pax Exam container to be able to execute the test below */
+                        /* Rest Assured dependencies needed in the Pax Exam container to be able to execute the test below */
                         mavenBundle("io.rest-assured", "json-path").versionAsInProject(),
                         mavenBundle("io.rest-assured", "xml-path").versionAsInProject(),
                         mavenBundle("io.rest-assured", "rest-assured").versionAsInProject(),

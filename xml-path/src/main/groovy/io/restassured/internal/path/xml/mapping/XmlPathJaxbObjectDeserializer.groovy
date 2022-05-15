@@ -21,12 +21,6 @@ import io.restassured.common.mapper.ObjectDeserializationContext
 import io.restassured.path.xml.mapper.factory.JAXBObjectMapperFactory
 import io.restassured.path.xml.mapping.XmlPathObjectDeserializer
 
-import javax.xml.bind.JAXBContext
-import javax.xml.bind.JAXBElement
-import javax.xml.bind.Unmarshaller
-import javax.xml.bind.annotation.XmlRootElement
-import javax.xml.transform.stream.StreamSource
-
 class XmlPathJaxbObjectDeserializer implements XmlPathObjectDeserializer {
 
   private final JAXBObjectMapperFactory factory
@@ -35,18 +29,19 @@ class XmlPathJaxbObjectDeserializer implements XmlPathObjectDeserializer {
     this.factory = factory
   }
 
+  @SuppressWarnings('UnnecessaryQualifiedReference')
   @Override
   def deserialize(ObjectDeserializationContext context) {
     def cls = context.getType()
     def object = context.getDataToDeserialize().asString()
-    JAXBContext jaxbContext = factory.create(cls, context.getCharset())
+    javax.xml.bind.JAXBContext jaxbContext = factory.create(cls, context.getCharset())
 
-    Unmarshaller unmarshaller = jaxbContext.createUnmarshaller()
+    javax.xml.bind.Unmarshaller unmarshaller = jaxbContext.createUnmarshaller()
     def reader = new StringReader(object)
-    if (cls.isAnnotationPresent(XmlRootElement.class)) {
+    if (cls.isAnnotationPresent(javax.xml.bind.annotation.XmlRootElement.class)) {
       unmarshaller.unmarshal(reader)
     } else {
-      JAXBElement jaxbElement = unmarshaller.unmarshal(new StreamSource(reader), cls)
+      javax.xml.bind.JAXBElement jaxbElement = unmarshaller.unmarshal(new javax.xml.transform.stream.StreamSource(reader), cls)
       jaxbElement.getValue()
     }
   }

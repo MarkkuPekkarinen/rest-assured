@@ -15,20 +15,18 @@
  */
 package io.restassured.scalatra
 
-import java.net.URLDecoder
-import java.util.{Date, Scanner}
-
 import io.restassured.scalatra.support.Gzip
-import javax.servlet.http.Cookie
 import net.liftweb.json.Extraction._
 import net.liftweb.json.JsonAST._
 import net.liftweb.json.JsonDSL._
-import net.liftweb.json.Printer._
 import net.liftweb.json.{DefaultFormats, JsonParser}
 import org.apache.commons.io.IOUtils
 import org.apache.commons.lang3.StringUtils
 import org.scalatra.ScalatraServlet
 
+import java.net.URLDecoder
+import java.util.{Date, Scanner}
+import javax.servlet.http.Cookie
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -50,13 +48,13 @@ class ScalatraRestExample extends ScalatraServlet {
   }
 
   post("/hello") {
-    val json = ("hello" -> "Hello Scalatra")
-    compact(render(json))
+    val json = "hello" -> "Hello Scalatra"
+    compactRender(json)
   }
 
   get("/hello") {
-    val json = ("hello" -> "Hello Scalatra")
-    compact(render(json))
+    val json = "hello" -> "Hello Scalatra"
+    compactRender(json)
   }
 
   get("/getWithContent") {
@@ -286,8 +284,8 @@ class ScalatraRestExample extends ScalatraServlet {
   }
 
   get("/hello") {
-    val json = ("hello" -> "Hello Scalatra")
-    compact(render(json))
+    val json = "hello" -> "Hello Scalatra"
+    compactRender(json)
   }
 
   get("/text-json") {
@@ -296,12 +294,20 @@ class ScalatraRestExample extends ScalatraServlet {
   }
 
   get("/lotto") {
-    val json = ("lotto" -> ("lottoId" -> lotto.id) ~
+    val json = "lotto" -> ("lottoId" -> lotto.id) ~
       ("winning-numbers" -> lotto.winningNumbers) ~
       ("drawDate" -> lotto.drawDate.map(_.toString)) ~
       ("winners" -> lotto.winners.map { w =>
-        (("winnerId" -> w.id) ~ ("numbers" -> w.numbers))}))
-    compact(render(json))
+        ("winnerId" -> w.id) ~ ("numbers" -> w.numbers)
+      })
+    compactRender(json)
+  }
+
+  get("/numbers") {
+    val json = "values" ->
+      ("pi" -> 3.14) ~
+      ("answer" -> 42)
+    compactRender(json)
   }
 
   get("/reflect") {
@@ -325,7 +331,7 @@ class ScalatraRestExample extends ScalatraServlet {
   }
 
   post("/param-reflect") {
-    compact(render(decompose(params)))
+    compactRender(decompose(params))
   }
 
   post("/:pathParam/manyParams") {
@@ -377,7 +383,7 @@ class ScalatraRestExample extends ScalatraServlet {
       val content = IOUtils.toString(request.getInputStream)
       val uris = content.split("\n")
       val json = "uris" -> decompose(uris)
-      compact(render(json))
+      compactRender(json)
     }
   }
 
@@ -386,7 +392,7 @@ class ScalatraRestExample extends ScalatraServlet {
     val lastName = {params("lastName")}
     val fullName: String = firstName + " " + lastName
     val json = ("firstName" -> firstName) ~ ("lastName" -> lastName) ~ ("fullName" -> fullName)
-    compact(render(json))
+    compactRender(json)
 
   }
 
@@ -395,7 +401,7 @@ class ScalatraRestExample extends ScalatraServlet {
     val middleName = {params("middleName")}
     val lastName = {params("lastName")}
     val json = ("firstName" -> firstName) ~ ("lastName" -> lastName) ~ ("middleName" -> middleName)
-    compact(render(json))
+    compactRender(json)
 
   }
 
@@ -508,23 +514,23 @@ class ScalatraRestExample extends ScalatraServlet {
       } + " " + {
         findParamIn(content, "lastName")
       }
-      val json = ("greeting" -> name)
-      compact(render(json))
+      val json = "greeting" -> name
+      compactRender(json)
     }
   }
 
   patch("/greetPatch") {
-    if(request.getParameterNames.exists { _ == "firstName" }) {
+    if (request.getParameterNames.contains("firstName")) {
       greetJson
     } else {
-      val content: String = IOUtils.toString(request.getInputStream)
+      val content: String = request.body
       val name = "Greetings " + {
         findParamIn(content, "firstName")
       } + " " + {
         findParamIn(content, "lastName")
       }
-      val json = ("greeting" -> name)
-      compact(render(json))
+      val json = "greeting" -> name
+      compactRender(json)
     }
   }
 
@@ -710,7 +716,7 @@ class ScalatraRestExample extends ScalatraServlet {
             .foldLeft(mutable.ListBuffer[Map[String, String]]())((list, cookie) => {
       list.add(cookie); list
     })
-    compact(render(cookies))
+    compactRender(cookies)
   }
 
   post("/j_spring_security_check") {
@@ -869,7 +875,7 @@ class ScalatraRestExample extends ScalatraServlet {
               map.put(nameAndValue._1, nameAndValue._2)
               map
             }).toMap // Convert map to an immutable map so that JSON gets rendered correctly, see http://stackoverflow.com/questions/6271386/how-do-you-serialize-a-map-to-json-in-scala
-    compact(render(decompose(nameValueMap)))
+    compactRender(decompose(nameValueMap))
   }
 
   get("/cookiesWithValues") {
@@ -1057,8 +1063,8 @@ class ScalatraRestExample extends ScalatraServlet {
 
   get("/gzip-json") {
     response.addHeader("Content-Encoding", "gzip")
-    val jsonData = ("hello" -> "Hello Scalatra")
-    val jsonString = compact(render(jsonData))
+    val jsonData = "hello" -> "Hello Scalatra"
+    val jsonString = compactRender(jsonData)
     Gzip.compress(jsonString.getBytes("UTF-8"))
   }
 
@@ -1211,8 +1217,8 @@ class ScalatraRestExample extends ScalatraServlet {
     } + " " + {
       params("lastName")
     }
-    val json = ("greeting" -> name)
-    compact(render(json))
+    val json = "greeting" -> name
+    compactRender(json)
   }
 
   def loginPage: String = {
@@ -1436,6 +1442,11 @@ class ScalatraRestExample extends ScalatraServlet {
       request.getContentType
   }
 
+  delete("/returnContentTypeAsBody") {
+      contentType = "text/plain"
+      request.getContentType
+  }
+
   post("/return204WithContentType") {
     contentType = "application/json"
     status = 204
@@ -1514,7 +1525,7 @@ class ScalatraRestExample extends ScalatraServlet {
               map.put(header._1, header._2.toList)
               map
             }).toMap // Convert map to an immutable map so that JSON gets rendered correctly, see http://stackoverflow.com/questions/6271386/how-do-you-serialize-a-map-to-json-in-scala
-    compact(render(decompose(map)))
+    compactRender(decompose(map))
   }
 
   def cookiesWithValues: String = {
@@ -1535,6 +1546,6 @@ class ScalatraRestExample extends ScalatraServlet {
       cookieMap.put("version", c.getVersion)
       cookieMap
     }).map(_.toMap) // Convert map to an immutable map so that JSON gets rendered correctly, see http://stackoverflow.com/questions/6271386/how-do-you-serialize-a-map-to-json-in-scala
-    compact(render(decompose(cookiesMap)))
+    compactRender(decompose(cookiesMap))
   }
 }

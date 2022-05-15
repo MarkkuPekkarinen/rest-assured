@@ -38,22 +38,22 @@ import static com.google.gson.FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.ObjectMapperConfig.objectMapperConfig;
 import static io.restassured.mapper.ObjectMapperType.GSON;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
 
 public class CustomObjectMappingITest extends WithJetty {
     public AtomicBoolean customSerializationUsed = new AtomicBoolean(false);
     public AtomicBoolean customDeserializationUsed = new AtomicBoolean(false);
 
     @Before public void
-    setup() throws Exception {
+    setup() {
         customSerializationUsed.set(false);
         customDeserializationUsed.set(false);
     }
 
     @Test public void
-    using_explicit_custom_object_mapper() throws Exception {
+    using_explicit_custom_object_mapper() {
         final Message message = new Message();
         message.setMessage("A message");
         final ObjectMapper mapper = new ObjectMapper() {

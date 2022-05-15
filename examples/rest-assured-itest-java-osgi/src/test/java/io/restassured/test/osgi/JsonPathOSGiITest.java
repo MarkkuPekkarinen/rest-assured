@@ -17,6 +17,7 @@
 package io.restassured.test.osgi;
 
 import io.restassured.path.json.JsonPath;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.ops4j.pax.exam.Configuration;
@@ -24,8 +25,8 @@ import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.PaxExam;
 
 import static io.restassured.test.osgi.options.RestAssuredPaxExamOptions.restAssuredJunitBundles;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
-import static org.junit.Assert.assertThat;
 import static org.ops4j.pax.exam.Constants.EXAM_FAIL_ON_UNRESOLVED_KEY;
 import static org.ops4j.pax.exam.CoreOptions.*;
 
@@ -51,11 +52,10 @@ public class JsonPathOSGiITest {
                         mavenBundle().groupId("org.apache.aries.spifly").artifactId("org.apache.aries.spifly.dynamic.bundle").version("1.2.1"),
                         mavenBundle().groupId("org.hamcrest").artifactId("hamcrest").versionAsInProject(),
                         mavenBundle().groupId("org.apache.commons").artifactId("commons-lang3").versionAsInProject(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
-                        mavenBundle().groupId("org.codehaus.groovy").artifactId("groovy").versionAsInProject(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-json").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy-xml").versionAsInProject().noStart(),
+                        mavenBundle().groupId("org.apache.groovy").artifactId("groovy").versionAsInProject(),
 
-                        wrappedBundle(mavenBundle("jakarta.xml.bind", "jakarta.xml.bind-api").versionAsInProject()),
                         wrappedBundle(mavenBundle().groupId("org.apache.httpcomponents").artifactId("httpclient").versionAsInProject()),
                         wrappedBundle(mavenBundle().groupId("org.apache.httpcomponents").artifactId("httpmime").versionAsInProject()),
                         wrappedBundle(mavenBundle().groupId("org.apache.httpcomponents").artifactId("httpcore").versionAsInProject()),

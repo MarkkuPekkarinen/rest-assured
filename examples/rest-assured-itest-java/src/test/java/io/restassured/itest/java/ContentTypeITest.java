@@ -212,13 +212,13 @@ public class ContentTypeITest extends WithJetty {
     }
 
     @Test public void
-    header_with_content_type_enum_works() throws Exception {
+    header_with_content_type_enum_works() {
         given().
                 header("Content-Type", ContentType.JSON).
         when().
                 post("/returnContentTypeAsBody").
         then().
-                body(equalTo(ContentType.JSON.withCharset(config().getEncoderConfig().defaultCharsetForContentType(ContentType.JSON))));
+                body(equalTo(ContentType.JSON.toString()));
     }
 
     @Test public void
@@ -263,7 +263,7 @@ public class ContentTypeITest extends WithJetty {
         when().
                  get("/returnContentTypeAsBody").
         then().
-                 body(equalTo(ContentType.JSON.withCharset(config().getEncoderConfig().defaultCharsetForContentType(ContentType.JSON))));
+                 body(equalTo(ContentType.JSON.toString()));
     }
 
     /**
@@ -453,6 +453,57 @@ public class ContentTypeITest extends WithJetty {
                 body("containsKey('Content-Type')", is(false));
     }
 
+    @Test public void
+    no_content_type_will_prevent_rest_assured_from_adding_a_content_type_for_post() {
+        given().
+                noContentType().
+        when().
+                post("/returnContentTypeAsBody").
+        then().
+                body(emptyString());
+    }
+
+    @Test public void
+    no_content_type_will_prevent_rest_assured_from_adding_a_content_type_for_patch() {
+        given().
+                noContentType().
+        when().
+                patch("/returnContentTypeAsBody").
+        then().
+                body(emptyString());
+    }
+
+    @Test public void
+    no_content_type_will_prevent_rest_assured_from_adding_a_content_type_for_delete() {
+        given().
+                noContentType().
+        when().
+                delete("/returnContentTypeAsBody").
+        then().
+                body(emptyString());
+    }
+
+    @Test public void
+    no_content_type_will_prevent_rest_assured_from_adding_a_content_type_for_options() {
+        given().
+                noContentType().
+        when().
+                delete("/returnContentTypeAsBody").
+        then().
+                body(emptyString());
+    }
+
+    @Test public void
+    no_content_type_will_prevent_rest_assured_from_adding_a_content_type_for_get() {
+        given().
+                contentType(ContentType.JSON).
+                noContentType().
+        when().
+                get("/returnContentTypeAsBody").
+        then().
+                body(emptyString());
+    }
+                      
     private String toJetty9(String charset) {
         return StringUtils.lowerCase(StringUtils.remove(charset, " "));
     }

@@ -13,35 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.restassured.internal;
 
+import io.restassured.response.Response;
+import io.restassured.response.ValidatableResponse;
 
+public class RestAssuredResponseImpl extends RestAssuredResponseOptionsImpl<Response> implements Response {
 
-
-package io.restassured.internal.common.mapper
-
-import io.restassured.common.mapper.DataToDeserialize
-import io.restassured.common.mapper.ObjectDeserializationContext
-
-import java.lang.reflect.Type
-
-class ObjectDeserializationContextImpl implements ObjectDeserializationContext {
-
-    def DataToDeserialize dataToDeserialize
-    def Type type
-    def charset
-
-    @Override
-    DataToDeserialize getDataToDeserialize() {
-        return dataToDeserialize
+    public void parseResponse(Object httpResponse, Object content, boolean hasBodyAssertions, ResponseParserRegistrar responseParserRegistrar) {
+        groovyResponse.parseResponse(httpResponse, content, hasBodyAssertions, responseParserRegistrar);
     }
 
     @Override
-    Type getType() {
-        return type
-    }
-
-    @Override
-    String getCharset() {
-        return charset
+    public ValidatableResponse then() {
+        return new ValidatableResponseImpl(getContentType(), getRpr(), getConfig(), this, this, getLogRepository());
     }
 }

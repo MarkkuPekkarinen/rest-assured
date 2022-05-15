@@ -21,8 +21,6 @@ package io.restassured
 import io.restassured.authentication.NoAuthScheme
 import io.restassured.internal.RequestSpecificationImpl
 import io.restassured.internal.log.LogRepository
-import io.restassured.specification.Argument
-import io.restassured.specification.RequestSpecification
 import org.junit.Before
 import org.junit.Test
 
@@ -37,7 +35,7 @@ class ParameterMapBuilderTest {
 
   @Before
   void setup() throws Exception {
-    requestBuilder = new RequestSpecificationImpl("baseURI", 20, "", new NoAuthScheme(), [], null, true, null, new LogRepository(), null);
+    requestBuilder = new RequestSpecificationImpl("baseURI", 20, "", new NoAuthScheme(), [], null, true, null, new LogRepository(), null, true);
   }
 
   @Test

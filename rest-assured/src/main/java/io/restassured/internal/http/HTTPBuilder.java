@@ -38,7 +38,6 @@ import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.conn.params.ConnRoutePNames;
 import org.apache.http.impl.client.AbstractHttpClient;
 import org.apache.http.protocol.HttpContext;
-import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.IOGroovyMethods;
 import org.codehaus.groovy.runtime.MethodClosure;
 
@@ -409,8 +408,10 @@ public abstract class HTTPBuilder {
         /* by default assume the request body will be URLEncoded, but allow
              the 'requestContentType' named argument to override this if it is
              given */
-        delegate.setRequestContentType(ContentType.URLENC.toString());
-        delegate.setPropertiesFromMap(args);
+        if ((Boolean) args.get("allowContentType")) {
+            delegate.setRequestContentType(ContentType.URLENC.toString());
+            delegate.setPropertiesFromMap(args);
+        }
 
         if (responseClosure != null) {
             delegate.getResponse().put(Status.SUCCESS.toString(), responseClosure);
@@ -520,10 +521,18 @@ public abstract class HTTPBuilder {
      * response does not contain any content (e.g. in response to a HEAD request).
      * @throws HttpResponseException if there is a error parsing the response
      */
-    protected Object parseResponse(HttpResponse resp, Object contentType)
+    // Hade to do an ugly hack when Rest Assured started to use Groovy 4.
+    // For some reason the subclass of HTTPBuilder couldn't call this method
+    // using super.parseResponse(..) when resp was of type HttpResponse
+    // (even though it was of this type and it used to work in Groovy 3).
+    // Thus we cast the Object resp into a HttpResponse on the first line of
+    // the method :(.
+    protected Object parseResponse(Object resp, Object contentType)
             throws IOException {
+        HttpResponse httpResponse = (HttpResponse) resp;
+
         // For HEAD or OPTIONS requests, there should be no response entity.
-        if (resp.getEntity() == null) {
+        if (httpResponse.getEntity() == null) {
             log.debug("Response contains no entity.  Parsed data is null.");
             return null;
         }
@@ -532,18 +541,17 @@ public abstract class HTTPBuilder {
         // if the given content-type is ANY ("*/*") then use the response content-type
         try {
             if (ContentType.ANY.toString().equals(responseContentType))
-                responseContentType = HttpResponseContentTypeFinder.findContentType(resp);
+                responseContentType = HttpResponseContentTypeFinder.findContentType(httpResponse);
         } catch (RuntimeException ex) {
             /* if for whatever reason we can't determine the content-type, but
-                * still want to attempt to parse the data, use the BINARY
-                * content-type so that the response will be buffered into a
-                * ByteArrayInputStream. */
+             * still want to attempt to parse the data, use the BINARY
+             * content-type so that the response will be buffered into a
+             * ByteArrayInputStream. */
             responseContentType = ContentType.BINARY.toString();
         }
 
-        Object parsedData = null;
         log.debug("Parsing response as: " + responseContentType);
-        parsedData = resp.getEntity().getContent();
+        Object parsedData = httpResponse.getEntity().getContent();
         if (parsedData == null) log.debug("Parser returned null!");
         else log.debug("Parsed data to instance of: " + parsedData.getClass());
         return parsedData;
@@ -828,8 +836,9 @@ public abstract class HTTPBuilder {
         private HttpRequestBase request;
         private Object contentType;
         private String requestContentType;
+        private boolean allowContentType;
         private Map<Object, Closure> responseHandlers = new StringHashMap<Closure>();
-        private URIBuilder uri;
+        public URIBuilder uri;
         private Map<Object, Object> headers = new StringHashMap<Object>();
         private HttpContextDecorator context = new HttpContextDecorator();
 
@@ -907,7 +916,7 @@ public abstract class HTTPBuilder {
          *
          * @see HttpRequestBase
          */
-        protected HttpRequestBase getRequest() {
+        public HttpRequestBase getRequest() {
             return this.request;
         }
 
@@ -923,7 +932,7 @@ public abstract class HTTPBuilder {
          * or passed from the {@link HTTPBuilder#defaultContentType} when this
          * RequestConfigDelegate instance was constructed.
          */
-        protected Object getContentType() {
+        public Object getContentType() {
             return this.contentType;
         }
 
@@ -949,7 +958,7 @@ public abstract class HTTPBuilder {
          *
          * @return
          */
-        protected String getRequestContentType() {
+        public String getRequestContentType() {
             if (this.requestContentType != null) return this.requestContentType;
             else return this.getContentType().toString();
         }
@@ -972,6 +981,11 @@ public abstract class HTTPBuilder {
             this.requestContentType = ct;
         }
 
+
+        protected void setAllowContentType(boolean allowContentType) {
+            this.allowContentType = allowContentType;
+        }
+
         /**
          * Valid arguments:
          * <dl>
@@ -986,6 +1000,7 @@ public abstract class HTTPBuilder {
          * If not supplied, the HTTPBuilder's default content-type is used.</dd>
          * <dt>requestContentType</dt><dd>content type for the request, if it
          * is different from the expected response content-type</dd>
+         * <dt>allowContentType</dt><dd>If a content-type should be used at all</dd>
          * <dt>body</dt><dd>Request body that will be encoded based on the given contentType</dd>
          * </dl>
          *
@@ -1016,11 +1031,16 @@ public abstract class HTTPBuilder {
             Object path = args.get("path");
             if (path != null) this.uri.setPath(path.toString());
 
-            Object contentType = args.get("contentType");
-            if (contentType != null) this.setContentType(contentType);
+            if ((Boolean) args.get("allowContentType")) {
+                Object contentType = args.get("contentType");
+                if (contentType != null) this.setContentType(contentType);
 
-            contentType = args.get("requestContentType");
-            if (contentType != null) this.setRequestContentType(contentType.toString());
+                contentType = args.get("requestContentType");
+                if (contentType != null) this.setRequestContentType(contentType.toString());
+            } else {
+                this.setContentType(null);
+                this.setRequestContentType(null);
+            }
 
             Object body = args.get("body");
             if (body != null) this.setBody(this.getRequestContentType(), body);
@@ -1124,7 +1144,7 @@ public abstract class HTTPBuilder {
          * @param statusCode HTTP response status code
          * @return the response handler
          */
-        protected Closure findResponseHandler(int statusCode) {
+        public Closure findResponseHandler(int statusCode) {
             Closure handler = this.getResponse().get(Integer.toString(statusCode));
             if (handler == null) handler =
                     this.getResponse().get(Status.find(statusCode).toString());

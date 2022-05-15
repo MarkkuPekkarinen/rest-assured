@@ -17,17 +17,17 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <properties>
-        <httpclient.version>4.5.3</httpclient.version>
+        <httpclient.version>4.5.13</httpclient.version>
     </properties>
     <parent>
         <groupId>io.rest-assured</groupId>
         <artifactId>rest-assured-parent</artifactId>
-        <version>4.3.2-SNAPSHOT</version>
+        <version>5.0.2-SNAPSHOT</version>
     </parent>
 
     <groupId>io.rest-assured</groupId>
     <artifactId>rest-assured</artifactId>
-    <version>4.3.2-SNAPSHOT</version>
+    <version>5.0.2-SNAPSHOT</version>
     <packaging>bundle</packaging>
 
     <name>REST Assured</name>
@@ -43,7 +43,6 @@
             <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
-                <version>3.5.1</version>
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
@@ -57,8 +56,7 @@
                             io.restassured.*
                         </Export-Package>
                         <Import-Package>
-                            groovy.*;version="${groovy.range}",
-                            org.codehaus.groovy.*;version="${groovy.range}",
+                            org.apache.groovy.*;version="${groovy.range}",
                             *
                         </Import-Package>
                     </instructions>
@@ -73,11 +71,11 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.codehaus.groovy</groupId>
+            <groupId>org.apache.groovy</groupId>
             <artifactId>groovy</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.codehaus.groovy</groupId>
+            <groupId>org.apache.groovy</groupId>
             <artifactId>groovy-xml</artifactId>
             <version>${groovy.version}</version>
         </dependency>
@@ -91,11 +89,29 @@
             <artifactId>httpmime</artifactId>
             <version>${httpclient.version}</version>
         </dependency>
-        
+
+        <!-- Jakarta EE 8 -->
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Jakarta EE 9 -->
+        <dependency>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>com.github.scribejava</groupId>
             <artifactId>scribejava-apis</artifactId>
-            <version>2.5.3</version>
+            <version>${scribe.version}</version>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -109,12 +125,12 @@
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>json-path</artifactId>
-            <version>4.3.2-SNAPSHOT</version>
+            <version>5.0.2-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>xml-path</artifactId>
-            <version>4.3.2-SNAPSHOT</version>
+            <version>5.0.2-SNAPSHOT</version>
         </dependency>
         <!-- Optional dependencies -->
         <dependency>

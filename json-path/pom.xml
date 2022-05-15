@@ -20,12 +20,12 @@
     <parent>
         <groupId>io.rest-assured</groupId>
         <artifactId>rest-assured-parent</artifactId>
-        <version>4.3.2-SNAPSHOT</version>
+        <version>5.0.2-SNAPSHOT</version>
     </parent>
     <groupId>io.rest-assured</groupId>
     <artifactId>json-path</artifactId>
     <packaging>bundle</packaging>
-    <version>4.3.2-SNAPSHOT</version>
+    <version>5.0.2-SNAPSHOT</version>
     <name>json-path</name>
     <url>http://maven.apache.org</url>
     <properties>
@@ -49,8 +49,7 @@
                         	io.restassured.internal.path.json.*
                        	</Export-Package>
                         <Import-Package>
-							groovy.*;version="${groovy.range}",
-                            org.codehaus.groovy.*;version="${groovy.range}",
+                            org.apache.groovy.*;version="${groovy.range}",
                             *
 						</Import-Package>
                     </instructions>
@@ -65,7 +64,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.codehaus.groovy</groupId>
+            <groupId>org.apache.groovy</groupId>
             <artifactId>groovy-json</artifactId>
             <version>${groovy.version}</version>
         </dependency>
@@ -110,13 +109,13 @@
             <optional>true</optional>
         </dependency>
         <dependency>
-            <groupId>org.codehaus.groovy</groupId>
+            <groupId>org.apache.groovy</groupId>
             <artifactId>groovy</artifactId>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured-common</artifactId>
-            <version>4.3.2-SNAPSHOT</version>
+            <version>5.0.2-SNAPSHOT</version>
         </dependency>
 
         <!-- Test -->

@@ -1,3 +1,104 @@
+Changelog next version
+----------------------
+* Upgrading kotlin to 1.6.21
+* Moved package io.restassured.assertion to io.restassured.internal.assertion since the classes in this package should be internal.
+* Added support for Spring Framework 6.0 and Jakarta API's in Spring MockMvc module.
+
+Changelog 5.0.1 (2022-04-06)
+----------------------------
+* Fixed so that with RestAssuredHttpBuilder no longer requires ResponseSpecificationImpl but rather a FilterableResponseSpecification
+
+Changelog 5.0.0 (2022-03-25)
+----------------------------
+* Breaking change: REST Assured now builds on Groovy 4!
+* Excluded example projects from rest assured bom file (issue 1546)
+* Updated jackson from version 2.11.1 to 2.13.2 (issue 1555)
+
+Changelog 4.5.1 (2022-02-11)
+----------------------------
+* Fixed a bug in ObjectMapper that required JAXB/JakartaEE when this was not intended (issue 1542)
+
+Changelog 4.5.0 (2022-01-21)
+----------------------------
+* JAXB is now an optional dependency for XmlPath and is now longer required. Depend on 'jakarta.xml.bind:jakarta.xml.bind-api:2.3.3' and 'com.sun.xml.bind:jaxb-impl:2.3.3'
+* Implemented support for serializing and deserializing with Jakarta EE 8 and 9. To use it you need to have Jakarta EE on the classpath, for example by depending on 'jakarta.xml.bind:jakarta.xml.bind-api:3.0.1' and 'org.glassfish.jaxb:jaxb-runtime:3.0.2'.
+* Upgraded groovy from 3.0.8 to 3.0.9 (thanks to sullis for pull request)
+* Added support for adding multiple LogDetails to the RequestLoggingFilter. You can now do e.g.:
+
+    given().filter(RequestLoggingFilter.with(LogDetail.METHOD, LogDetail.HEADERS, LogDetail.BODY)).when(). ..
+
+  Thanks to lucasnguyen17 for pull request.
+* Fix default implementation of deprecated method detachRoot (#1503) (thanks to Guillaume Boucherie for pull request)
+* Add on fail message builder for response specification (#1502). This means that you can no do:
+  when().
+        get().
+  then().
+        onFailMessage("Some specific message").
+        statusCode(200);
+ The "onFailMessage" will be shown in the error. This is good if you want to e.g. distinguish more easily between tests if they fail. (thanks to Victor Borovlev for pull request)
+* Allow parsing responses with cookies that has numbers out of signed decimal range (#1069). This is a backward incompatible change if you're using the maxAge on "DetailedCookie" which now takes a long instead of an int. (thanks to Michał Radomyski for pull request)
+* Upgraded the kotlin extension module to use Kotlin 1.6.10 instead of 1.5.0
+* Introduced a rest-assured bom project for maven. Depend on 'io.rest-assured:rest-assured-bom:4.5.0' to use it. The bom contains configuration details for the rest-assured project that imports the correct dependencies (and versions) and to build your project. (thanks to George Gastaldi for pull request)
+* Added "noContentType()" method to RequestSpecification which allows you to remove the content-type from the request if needed. For example:
+    given().
+        noContentType().
+    when().
+        post("/somewhere").
+    then().
+        statusCode(200);
+  (issue 1516)
+* Removed accidental import of jdk.nashorn.internal.runtime.JSType.UNDEFINED_LONG from the Cookie class
+
+
+Changelog 4.4.0 (2021-05-21)
+----------------------------
+* Upgrading kotlin extension module to use Kotlin 1.5.0 (previously 1.4.21 was used)
+* Upgrading commons-io from 2.4.0 to 2.8.0
+* Apache http client is upgraded from 4.5.3 to 4.5.13 (thanks to Daniel Reissenberger for pull request)
+* Improved oauth compatibility with new http client
+* Fixed a bug in EncoderConfig where user configured was accidentally set to true in default constructor
+* Non-backward compatible change: REST Assured will no longer add "charset=utf-8" by default to application/json content-type's since this is not recommended by RFC 7159.
+  REST Assured will still automatically encode content as UTF-8, it's just that the charset is not added. To revert to the old behavior do:
+
+    RestAssured.config(RestAssured.config().encoderConfig(EncoderConfig.encoderConfig().defaultCharsetForContentType("UTF-8", "application/json")))
+
+  or specify the charset explicitly in the request:
+
+    given().contentType(ContentType.JSON.withCharset(UTF_8)). ..
+ (thanks to Michal Domagala for initial pull request)
+* Added MULTIPART to as an option ContentType (thanks to Yusuf Tayman for pull request)
+* Upgraded groovy from 3.0.7 to 3.0.8
+
+Changelog 4.3.3 (2020-12-11)
+----------------------------
+* Upgrading kotlin extension module to use Kotlin 1.4.21 (previously 1.4.10 was used)
+* Upgraded groovy from 3.0.6 to 3.0.7
+* Ensure subclasses of ResponseOptions do not break Prettifier (#1425) (thanks to Sam Neirinck for PR)
+
+Changelog 4.2.1 (2020-12-11)
+----------------------------
+* Backport of: Fix content type name before charset recognition (#1341)
+
+Changelog 4.3.2 (2020-11-08)
+----------------------------
+* Upgrade json-schema-validator to 2.2.14 (issue 1397) (thanks to Guillaume Smet for PR)
+* Upgrading apache commons lang3 from 3.4 to 3.11.
+* Added asPrettyString method to ResponseBody (issue 1395) (thanks to GithubMood for PR)
+* Describe non matching actual method with Hamcrest matcher format (issue 1387) (thanks for Ivo Šmíd for PR)
+  Before you could run into cryptic error messages such as:
+
+      JSON path values.pi doesn't match.
+      Expected: <3.14>
+      Actual: 3.14
+
+  Now, you see this instead:
+
+      JSON path values.pi doesn't match.
+      Expected: <3.14>
+      Actual: <3.14F>
+* Upgraded groovy from 3.0.3 to 3.0.6
+* Upgrading Kotlin extension module to use Kotlin 1.4.10 (previously 1.3.72 was used)
+
 Changelog 4.3.1 (2020-07-03)
 ----------------------------
 * Upgrading Kotlin extension module to use Kotlin 1.3.72 (previously 1.3.70 was used)

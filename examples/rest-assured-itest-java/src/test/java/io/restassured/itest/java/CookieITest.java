@@ -32,8 +32,8 @@ import java.util.Map;
 
 import static io.restassured.RestAssured.*;
 import static io.restassured.matcher.RestAssuredMatchers.detailedCookie;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.Assert.assertThat;
 
 public class CookieITest extends WithJetty {
 
@@ -58,7 +58,7 @@ public class CookieITest extends WithJetty {
 
     @Test
     public void supportsDetailedCookieMatchingUsingDsl() {
-        expect().cookie("cookie1", detailedCookie().maxAge(1234567).path(Matchers.notNullValue()))
+        expect().cookie("cookie1", detailedCookie().maxAge(1234567L).path(Matchers.notNullValue()))
                 .when().get("/multiCookie");
     }
 
@@ -67,7 +67,7 @@ public class CookieITest extends WithJetty {
         given()
                 .get("/multiCookie")
                 .then()
-                .cookie("cookie1", detailedCookie().maxAge(1234567).path(Matchers.notNullValue()));
+                .cookie("cookie1", detailedCookie().maxAge(1234567L).path(Matchers.notNullValue()));
     }
 
     @Test
@@ -186,7 +186,7 @@ public class CookieITest extends WithJetty {
     }
 
     @Test
-    public void canGetCookieDetails() throws Exception {
+    public void canGetCookieDetails() {
         final List<Cookie> cookies = get("/multiCookie").detailedCookies().getList("cookie1");
 
         assertThat(cookies.size(), is(2));
@@ -199,9 +199,8 @@ public class CookieITest extends WithJetty {
         assertThat(secondCookie.getValue(), equalTo("cookieValue2"));
         assertThat(secondCookie.getDomain(), equalTo("localhost"));
         assertThat(secondCookie.getPath(), equalTo("/"));
-        assertThat(secondCookie.getMaxAge(), is(1234567));
+        assertThat(secondCookie.getMaxAge(), is(1234567L));
         assertThat(secondCookie.isSecured(), is(true));
-        assertThat(secondCookie.getVersion(), is(1));
     }
 
     @Test

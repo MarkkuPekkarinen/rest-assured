@@ -15,16 +15,16 @@
  */
 package io.restassured.module.spring.commons;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import io.restassured.config.EncoderConfig;
 import io.restassured.config.HeaderConfig;
 import io.restassured.http.Header;
 import io.restassured.http.Headers;
 import io.restassured.module.spring.commons.config.SpecificationConfig;
 import org.apache.commons.lang3.StringUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 
@@ -38,7 +38,7 @@ public class HeaderHelper {
 
     public static Headers headers(Headers requestHeaders, Map<String, ?> headers, SpecificationConfig config) {
         notNull(headers, "headers");
-        List<Header> headerList = new ArrayList<Header>();
+        List<Header> headerList = new ArrayList<>();
         if (requestHeaders.exist()) {
             for (Header requestHeader : requestHeaders) {
                 headerList.add(requestHeader);
@@ -72,7 +72,7 @@ public class HeaderHelper {
     public static Headers headers(Headers requestHeaders, Headers headersToAdd, HeaderConfig headerConfig) {
         notNull(headersToAdd, "Headers");
         if (headersToAdd.exist()) {
-            List<Header> headerList = new ArrayList<Header>();
+            List<Header> headerList = new ArrayList<>();
             if (requestHeaders.exist()) {
                 for (Header requestHeader : requestHeaders) {
                     headerList.add(requestHeader);
@@ -94,11 +94,17 @@ public class HeaderHelper {
             baseContentType = "multipart/" + config.getMultiPartConfig().defaultSubtype();
         }
 
+        EncoderConfig encoderConfig = config.getEncoderConfig();
+        if (StringUtils.equalsIgnoreCase(baseContentType, "application/json")
+                && !(encoderConfig.hasDefaultCharsetForContentType("application/json") && encoderConfig.isUserConfigured())) {
+            return baseContentType;
+        }
+
         if (StringUtils.containsIgnoreCase(baseContentType, CHARSET)) {
             return baseContentType;
         }
 
-        return appendCharsetToContentType(baseContentType, config.getEncoderConfig());
+        return appendCharsetToContentType(baseContentType, encoderConfig);
     }
 
     public static String buildApplicationFormEncodedContentType(SpecificationConfig config, String baseContentType) {
@@ -113,7 +119,7 @@ public class HeaderHelper {
     }
 
     private static List<Header> removeMergedHeadersIfNeeded(List<Header> headerList, HeaderConfig headerConfig) {
-        List<Header> filteredList = new ArrayList<Header>();
+        List<Header> filteredList = new ArrayList<>();
         for (Header header : headerList) {
             String headerName = header.getName();
             if (headerConfig.shouldOverwriteHeaderWithName(headerName)) {

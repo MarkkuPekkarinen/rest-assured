@@ -63,6 +63,7 @@ import org.apache.http.impl.client.BasicCredentialsProvider
 import org.apache.http.message.BasicHeader
 import org.apache.http.util.EntityUtils
 
+import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import java.util.Map.Entry
 import java.util.regex.Matcher
@@ -91,6 +92,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   private static final String MULTIPART = "multipart"
   private static final String MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH = MULTIPART + "/"
   private static final String MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS = MULTIPART + "+"
+  private static final String APPLICATION_JSON = "application/json"
   private static final String TEMPLATE_START = "{"
   private static final String TEMPLATE_END = "}"
 
@@ -109,19 +111,19 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   private Map<String, String> namedPathParameters = [:]
   private Map<String, String> httpClientParams = [:]
   AuthenticationScheme authenticationScheme = new NoAuthScheme()
-  private FilterableResponseSpecification responseSpecification;
+  private FilterableResponseSpecification responseSpecification
   private Headers requestHeaders = new Headers([])
   private Cookies cookies = new Cookies([])
-  private Object requestBody;
-  private List<Filter> filters = [];
+  private Object requestBody
+  private List<Filter> filters = []
   private boolean urlEncodingEnabled
-  private RestAssuredConfig restAssuredConfig;
-  private List<MultiPartInternal> multiParts = [];
+  private RestAssuredConfig restAssuredConfig
+  private List<MultiPartInternal> multiParts = []
   private ParameterUpdater parameterUpdater = new ParameterUpdater(new ParameterUpdater.Serializer() {
     String serializeIfNeeded(Object value) {
       return RequestSpecificationImpl.this.serializeIfNeeded(value)
     }
-  });
+  })
   private ProxySpecification proxySpecification = null
 
   private LogRepository logRepository
@@ -129,12 +131,14 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   // This field should be removed once http://jira.codehaus.org/browse/GROOVY-4647 is resolved, merge with sha 9619c3b when it's fixed.
   private AbstractHttpClient httpClient
 
-  public RequestSpecificationImpl(String baseURI, int requestPort, String basePath, AuthenticationScheme defaultAuthScheme, List<Filter> filters,
-                                  RequestSpecification defaultSpec, boolean urlEncode, RestAssuredConfig restAssuredConfig, LogRepository logRepository,
-                                  ProxySpecification proxySpecification) {
-    notNull(baseURI, "baseURI");
-    notNull(basePath, "basePath");
-    notNull(defaultAuthScheme, "defaultAuthScheme");
+  private boolean allowContentType
+
+  RequestSpecificationImpl(String baseURI, int requestPort, String basePath, AuthenticationScheme defaultAuthScheme, List<Filter> filters,
+                           RequestSpecification defaultSpec, boolean urlEncode, RestAssuredConfig restAssuredConfig, LogRepository logRepository,
+                           ProxySpecification proxySpecification, boolean allowContentType) {
+    notNull(baseURI, "baseURI")
+    notNull(basePath, "basePath")
+    notNull(defaultAuthScheme, "defaultAuthScheme")
     notNull(filters, "Filters")
     notNull(urlEncode, "URL Encode query params option")
     this.baseUri = baseURI
@@ -149,22 +153,23 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     }
     this.logRepository = logRepository
     this.proxySpecification = proxySpecification
+    this.allowContentType = allowContentType
   }
 
   RequestSpecification when() {
-    return this;
+    return this
   }
 
   RequestSpecification given() {
-    return this;
+    return this
   }
 
   RequestSpecification that() {
-    return this;
+    return this
   }
 
   ResponseSpecification response() {
-    return responseSpecification;
+    return responseSpecification
   }
 
   Response get(String path, Object... pathParams) {
@@ -543,7 +548,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   FilterableRequestSpecification removeUnnamedPathParam(String parameterName) {
     notNull parameterName, "parameterName"
-    def indexOfParamName = unnamedPathParamsTuples.findIndexOf { it.first == parameterName }
+    def indexOfParamName = unnamedPathParamsTuples.findIndexOf { it.v1 == parameterName }
     if (indexOfParamName > -1) {
       removeUnnamedPathParamAtIndex(indexOfParamName)
     }
@@ -552,7 +557,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   FilterableRequestSpecification removeUnnamedPathParamByValue(String parameterValue) {
     notNull parameterValue, "parameterValue"
-    def indexOfParamValue = unnamedPathParamsTuples.findIndexOf { it.second == parameterValue }
+    def indexOfParamValue = unnamedPathParamsTuples.findIndexOf { it.v2 == parameterValue }
     if (indexOfParamValue > -1) {
       removeUnnamedPathParamAtIndex(indexOfParamValue)
     }
@@ -640,31 +645,31 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   RequestSpecification and() {
-    return this;
+    return this
   }
 
   RequestSpecification request() {
-    return this;
+    return this
   }
 
   RequestSpecification with() {
-    return this;
+    return this
   }
 
   ResponseSpecification then() {
-    return responseSpecification;
+    return responseSpecification
   }
 
   ResponseSpecification expect() {
-    return responseSpecification;
+    return responseSpecification
   }
 
   AuthenticationSpecification auth() {
-    return new AuthenticationSpecificationImpl(this);
+    return new AuthenticationSpecificationImpl(this)
   }
 
   AuthenticationSpecification authentication() {
-    return auth();
+    return auth()
   }
 
   RequestSpecification port(int port) {
@@ -677,20 +682,20 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   RequestSpecification body(String body) {
     notNull body, "body"
-    this.requestBody = body;
-    return this;
+    this.requestBody = body
+    return this
   }
 
   RequestSpecification baseUri(String baseUri) {
     notNull baseUri, "Base URI"
-    this.baseUri = baseUri;
-    return this;
+    this.baseUri = baseUri
+    return this
   }
 
   RequestSpecification basePath(String basePath) {
     notNull basePath, "Base Path"
-    this.basePath = basePath;
-    return this;
+    this.basePath = basePath
+    return this
   }
 
   RequestSpecification proxy(String host, int port) {
@@ -715,7 +720,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   RequestSpecification proxy(URI uri) {
     notNull(uri, URI.class)
-    proxy(new ProxySpecification(uri.host, uri.port, uri.scheme));
+    proxy(new ProxySpecification(uri.host, uri.port, uri.scheme))
   }
 
   RequestSpecification proxy(ProxySpecification proxySpecification) {
@@ -726,40 +731,40 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   RequestSpecification body(byte[] body) {
     notNull body, "body"
-    this.requestBody = body;
-    return this;
+    this.requestBody = body
+    return this
   }
 
   RequestSpecification body(File body) {
     notNull body, "body"
-    this.requestBody = body;
-    return this;
+    this.requestBody = body
+    return this
   }
 
   RequestSpecification body(InputStream body) {
     notNull body, "body"
-    this.requestBody = body;
-    return this;
+    this.requestBody = body
+    return this
   }
 
   RequestSpecification body(Object object) {
     notNull object, "object"
     if (!isSerializableCandidate(object)) {
-      return body(object.toString());
+      return body(object.toString())
     }
 
-    this.requestBody = ObjectMapping.serialize(object, requestContentType, findEncoderCharsetOrReturnDefault(requestContentType), null, objectMappingConfig(), restAssuredConfig().getEncoderConfig());
+    this.requestBody = ObjectMapping.serialize(object, requestContentType, findEncoderCharsetOrReturnDefault(requestContentType), null, objectMappingConfig(), restAssuredConfig().getEncoderConfig())
     this
   }
 
   RequestSpecification body(Object object, ObjectMapper mapper) {
     notNull object, "object"
     notNull mapper, "Object mapper"
-    def ctx = new ObjectMapperSerializationContextImpl();
+    def ctx = new ObjectMapperSerializationContextImpl()
     ctx.setObject(object)
     ctx.setCharset(findEncoderCharsetOrReturnDefault(requestContentType))
     ctx.setContentType(requestContentType)
-    this.requestBody = mapper.serialize(ctx);
+    this.requestBody = mapper.serialize(ctx)
     this
   }
 
@@ -772,12 +777,19 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   RequestSpecification contentType(ContentType contentType) {
     notNull contentType, ContentType.class
+    allowContentType = true
     header(CONTENT_TYPE, contentType)
   }
 
   RequestSpecification contentType(String contentType) {
     notNull contentType, "Content-Type header cannot be null"
+    allowContentType = true
     header(CONTENT_TYPE, contentType)
+  }
+
+  RequestSpecification noContentType() {
+    allowContentType = false
+    removeHeader(CONTENT_TYPE)
   }
 
   RequestSpecification accept(ContentType contentType) {
@@ -807,7 +819,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     }
     headerList = removeMergedHeadersIfNeeded(headerList)
     this.requestHeaders = new Headers(headerList)
-    return this;
+    return this
   }
 
   RequestSpecification headers(Headers headers) {
@@ -853,7 +865,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   RequestSpecification header(Header header) {
     notNull header, "Header"
 
-    return headers(new Headers(asList(header)));
+    return headers(new Headers(asList(header)))
   }
 
   RequestSpecification headers(String firstHeaderName, Object firstHeaderValue, Object... headerNameValuePairs) {
@@ -871,10 +883,10 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       cookieList.addAll(this.cookies.list())
     }
     cookies.each {
-      cookieList << new Cookie.Builder(it.key, it.value).build();
+      cookieList << new Cookie.Builder(it.key, it.value).build()
     }
     this.cookies = new Cookies(cookieList)
-    return this;
+    return this
   }
 
   RequestSpecification cookies(Cookies cookies) {
@@ -903,7 +915,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   RequestSpecification cookie(Cookie cookie) {
     notNull cookie, "Cookie"
-    return cookies(new Cookies(asList(cookie)));
+    return cookies(new Cookies(asList(cookie)))
   }
 
   RequestSpecification cookie(String cookieName) {
@@ -933,7 +945,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     notNull(sessionIdValue, "Session id value")
     if (cookies.hasCookieWithName(sessionIdName)) {
       def allOtherCookies = cookies.findAll { !it.getName().equalsIgnoreCase(sessionIdName) }
-      allOtherCookies.add(new Cookie.Builder(sessionIdName, sessionIdValue).build());
+      allOtherCookies.add(new Cookie.Builder(sessionIdName, sessionIdValue).build())
       this.cookies = new Cookies(allOtherCookies)
     } else {
       cookie(sessionIdName, sessionIdValue)
@@ -955,7 +967,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       content = serializeIfNeeded(multiPartSpec.content, mimeType)
     }
 
-    final String controlName;
+    final String controlName
     if (multiPartSpec instanceof MultiPartSpecificationImpl && !multiPartSpec.isControlNameSpecifiedExplicitly()) {
       // We use the default control name if it was not explicitly specified in the multi-part spec
       controlName = restAssuredConfig().getMultiPartConfig().defaultControlName()
@@ -963,7 +975,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       controlName = multiPartSpec.controlName
     }
 
-    final String fileName;
+    final String fileName
     if (multiPartSpec instanceof MultiPartSpecificationImpl && !multiPartSpec.isFileNameSpecifiedExplicitly()) {
       // We use the default file name if it was not explicitly specified in the multi-part spec
       fileName = restAssuredConfig().getMultiPartConfig().defaultFileName()
@@ -1046,7 +1058,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   def newFilterContext(assertionClosure, filters, properties) {
     if (path?.endsWith("?")) {
-      throw new IllegalArgumentException("Request URI cannot end with ?");
+      throw new IllegalArgumentException("Request URI cannot end with ?")
     }
 
     // Set default accept header if undefined
@@ -1059,11 +1071,11 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       header(CONTENT_TYPE, tempContentType)
     }
 
-    def unnamedPathParamValues = unnamedPathParamsTuples.findAll { it.second != null }.collect { it.second }
+    def unnamedPathParamValues = unnamedPathParamsTuples.findAll { it.v2 != null }.collect { it.v2 }
     def uri = partiallyApplyPathParams(path, true, unnamedPathParamValues)
     String requestUriForLogging = generateRequestUriForLogging(uri, method)
 
-    new FilterContextImpl(requestUriForLogging, getUserDefinedPath(), getDerivedPath(uri), uri, path, unnamedPathParamValues.toArray(), method, assertionClosure, filters, properties);
+    new FilterContextImpl(requestUriForLogging, getUserDefinedPath(), getDerivedPath(uri), uri, path, unnamedPathParamValues.toArray(), method, assertionClosure, filters, properties)
   }
 
   private String generateRequestUriForLogging(uri, method) {
@@ -1083,7 +1095,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
       // Add query parameters defined in path to the allQueryParams map
       if (!isBlank(queryParamsDefinedInPath)) {
-        def splittedQueryParams = split(queryParamsDefinedInPath, "&");
+        def splittedQueryParams = split(queryParamsDefinedInPath, "&")
         splittedQueryParams.each { queryNameWithPotentialValue ->
           String[] splitted = split(queryNameWithPotentialValue, "=", 2)
           def queryParamHasValueDefined = splitted.size() > 1 || queryNameWithPotentialValue.contains("=")
@@ -1092,7 +1104,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
             def value = splitted.size() == 1 ? "" : splitted[1]
             allQueryParams.put(splitted[0], value)
           } else {
-            allQueryParams.put(splitted[0], new NoParameterValue());
+            allQueryParams.put(splitted[0], new NoParameterValue())
           }
         }
       }
@@ -1127,21 +1139,22 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   private
   Response sendRequest(path, assertionClosure, FilterableRequestSpecification requestSpecification, Map filterContextProperties) {
     notNull path, "Path"
-    path = extractRequestParamsIfNeeded(path);
+    path = extractRequestParamsIfNeeded(path)
     def method = requestSpecification.getMethod()
-    def targetUri = getTargetURI(path);
+    def targetUri = getTargetURI(path)
     def targetPath = getTargetPath(path)
 
     assertCorrectNumberOfPathParams()
 
     if (!requestSpecification.getHttpClient() instanceof AbstractHttpClient) {
-      throw new IllegalStateException(format("Unfortunately Rest Assured only supports Http Client instances of type %s.", AbstractHttpClient.class.getName()));
+      throw new IllegalStateException(format("Unfortunately Rest Assured only supports Http Client instances of type %s.", AbstractHttpClient.class.getName()))
     }
 
-    def http = new RestAssuredHttpBuilder(targetUri, assertionClosure, urlEncodingEnabled, config, requestSpecification.getHttpClient() as AbstractHttpClient);
+    def http = new RestAssuredHttpBuilder(responseSpecification, requestHeaders, queryParameters, targetUri, assertionClosure, urlEncodingEnabled,
+            config, requestSpecification.getHttpClient() as AbstractHttpClient, allowContentType, responseSpecification.rpr.defaultParser)
     applyProxySettings(http)
     applyRestAssuredConfig(http)
-    registerRestAssuredEncoders(http);
+    registerRestAssuredEncoders(http)
     setRequestHeadersToHttpBuilder(http)
 
     if (cookies.exist()) {
@@ -1150,7 +1163,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
     // Allow returning a the response
     def restAssuredResponse = new RestAssuredResponseImpl(logRepository: logRepository)
-    RestAssuredConfig cfg = config ?: new RestAssuredConfig();
+    RestAssuredConfig cfg = config ?: new RestAssuredConfig()
     restAssuredResponse.setSessionIdName(cfg.getSessionConfig().sessionIdName())
     restAssuredResponse.setDecoderConfig(cfg.getDecoderConfig())
     restAssuredResponse.setConnectionManager(http.client.connectionManager)
@@ -1160,7 +1173,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     def acceptContentType = assertionClosure.getResponseContentType()
 
     if (shouldApplySSLConfig(http, cfg)) {
-      def sslConfig = cfg.getSSLConfig();
+      def sslConfig = cfg.getSSLConfig()
       new CertAuthScheme(pathToKeyStore: sslConfig.getPathToKeyStore(), keyStorePassword: sslConfig.getKeyStorePassword(),
               keystoreType: sslConfig.getKeyStoreType(), keyStore: sslConfig.getKeyStore(),
               pathToTrustStore: sslConfig.getPathToTrustStore(), trustStorePassword: sslConfig.getTrustStorePassword(),
@@ -1173,11 +1186,12 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
     if (mayHaveBody(method)) {
       if (hasFormParams() && requestBody != null) {
-        throw new IllegalStateException("You can either send form parameters OR body content in $method, not both!");
+        throw new IllegalStateException("You can either send form parameters OR body content in $method, not both!")
       }
       def bodyContent = createFormParamBodyContent(assembleBodyContent(method))
       if (POST.name().equalsIgnoreCase(method)) {
         http.post(path: targetPath, body: bodyContent,
+                allowContentType: allowContentType,
                 requestContentType: requestHeaders.getValue(CONTENT_TYPE),
                 contentType: acceptContentType) { response, content ->
           if (assertionClosure != null) {
@@ -1186,6 +1200,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
         }
       } else if (PATCH.name().equalsIgnoreCase(method)) {
         http.patch(path: targetPath, body: bodyContent,
+                allowContentType: allowContentType,
                 requestContentType: requestHeaders.getValue(CONTENT_TYPE),
                 contentType: acceptContentType) { response, content ->
           if (assertionClosure != null) {
@@ -1207,8 +1222,8 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     if (!getRedundantNamedPathParams().isEmpty() || !getRedundantUnnamedPathParamValues().isEmpty() || !getUndefinedPathParamPlaceholders().isEmpty()) {
       def pathParamPlaceholderSize = getPathParamPlaceholders().size()
       def namedPathParams = getNamedPathParams()
-      def pathParamSize = namedPathParams.size() + unnamedPathParamsTuples.findAll { it.second != null }.findAll {
-        !namedPathParams.containsKey(it.second)
+      def pathParamSize = namedPathParams.size() + unnamedPathParamsTuples.findAll { it.v2 != null }.findAll {
+        !namedPathParams.containsKey(it.v2)
       }.size()
 
       def redundantNamedPathParams = getRedundantNamedPathParams()
@@ -1250,15 +1265,15 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   boolean shouldApplySSLConfig(http, RestAssuredConfig cfg) {
-    URI uri = ((URIBuilder) http.getUri()).toURI();
-    if (uri == null) throw new IllegalStateException("a default URI must be set");
+    URI uri = ((URIBuilder) http.getUri()).toURI()
+    if (uri == null) throw new IllegalStateException("a default URI must be set")
     uri.getScheme()?.toLowerCase() == "https" && cfg.getSSLConfig().isUserConfigured() && !(authenticationScheme instanceof CertAuthScheme)
   }
 
   def applyRestAssuredConfig(HTTPBuilder http) {
     // Decoder config should always be applied regardless if restAssuredConfig is null or not because
     // by default we should support GZIP and DEFLATE decoding.
-    applyContentDecoders(http, (restAssuredConfig?.getDecoderConfig() ?: new DecoderConfig()).contentDecoders());
+    applyContentDecoders(http, (restAssuredConfig?.getDecoderConfig() ?: new DecoderConfig()).contentDecoders())
     if (restAssuredConfig != null) {
       applyRedirectConfig(restAssuredConfig.getRedirectConfig())
       applyHttpClientConfig(restAssuredConfig.getHttpClientConfig())
@@ -1266,7 +1281,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       applySessionConfig(restAssuredConfig.getSessionConfig())
     }
     if (!httpClientParams.isEmpty()) {
-      def p = http.client.getParams();
+      def p = http.client.getParams()
 
       httpClientParams.each { key, value ->
         p.setParameter(key, value)
@@ -1330,12 +1345,12 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   def setRequestHeadersToHttpBuilder(HTTPBuilder http) {
-    def httpHeaders = http.getHeaders();
+    def httpHeaders = http.getHeaders()
     requestHeaders.each { header ->
       def headerName = header.getName()
       def headerValue = header.getValue()
       if (httpHeaders.containsKey(headerName)) {
-        def values = [httpHeaders.get(headerName)];
+        def values = [httpHeaders.get(headerName)]
         values << headerValue
         def headerVal = values.flatten()
         httpHeaders.put(headerName, headerVal)
@@ -1365,7 +1380,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   private def registerRestAssuredEncoders(HTTPBuilder http) {
     // Multipart form-data
     if (multiParts.isEmpty()) {
-      return;
+      return
     }
 
     if (hasFormParams()) {
@@ -1374,13 +1389,13 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
     def contentTypeAsString = headers.getValue(CONTENT_TYPE)
     def ct = ContentTypeExtractor.getContentTypeWithoutCharset(contentTypeAsString)
-    def subType;
+    def subType
     if (ct?.toLowerCase()?.startsWith(MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH)) {
       subType = substringAfter(ct, MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH)
     } else if (ct?.toLowerCase()?.contains(MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS)) {
       subType = substringBefore(substringAfter(ct, MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS), "+")
     } else {
-      throw new IllegalArgumentException("Content-Type $ct is not valid when using multiparts, it must start with \"$MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH\" or contain \"$MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS\".");
+      throw new IllegalArgumentException("Content-Type $ct is not valid when using multiparts, it must start with \"$MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH\" or contain \"$MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS\".")
     }
 
     def charsetFromContentType = CharsetExtractor.getCharsetFromContentType(contentTypeAsString)
@@ -1397,14 +1412,14 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     // For "defaultCharset" to be taken into account we need to 
 
     http.encoders.putAt ct, { contentType, content ->
-      RestAssuredMultiPartEntity entity = new RestAssuredMultiPartEntity(subType, charsetToUse, multipartMode, boundaryToUse);
+      RestAssuredMultiPartEntity entity = new RestAssuredMultiPartEntity(subType, charsetToUse, multipartMode, boundaryToUse)
 
       multiParts.each {
         def body = it.contentBody
         def controlName = it.controlName
         def headers = it.headers
         if (headers.isEmpty()) {
-          entity.addPart(controlName, body);
+          entity.addPart(controlName, body)
         } else {
           def builder = FormBodyPartBuilder.create(controlName, body)
           headers.each { name, value ->
@@ -1414,7 +1429,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
         }
       }
 
-      entity;
+      entity
     }
   }
 
@@ -1451,7 +1466,9 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     http.request(method, responseContentType, hasBody) {
       uri.path = targetPath
 
-      setRequestContentType(defineRequestContentTypeAsString(method))
+      if (this.allowContentType) {
+        setRequestContentType(defineRequestContentTypeAsString(method))
+      }
 
       if (hasBody) {
         body = requestBody
@@ -1479,26 +1496,26 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   private String extractRequestParamsIfNeeded(String path) {
     if (path.contains("?")) {
       def indexOfQuestionMark = path.indexOf("?")
-      String allParamAsString = path.substring(indexOfQuestionMark + 1);
-      def keyValueParams = allParamAsString.split("&");
+      String allParamAsString = path.substring(indexOfQuestionMark + 1)
+      def keyValueParams = allParamAsString.split("&")
       keyValueParams.each {
         def keyValue = split(it, "=", 2)
-        def theKey;
-        def theValue;
+        def theKey
+        def theValue
         if (keyValue.length < 1 || keyValue.length > 2) {
           throw new IllegalArgumentException("Illegal parameters passed to REST Assured. Parameters was: $keyValueParams")
         } else if (keyValue.length == 1) {
           theKey = keyValue[0]
-          theValue = it.contains("=") ? "" : new NoParameterValue();
+          theValue = it.contains("=") ? "" : new NoParameterValue()
         } else {
           theKey = keyValue[0]
           theValue = keyValue[1]
         }
         queryParam(theKey, theValue)
-      };
-      path = path.substring(0, indexOfQuestionMark);
+      }
+      path = path.substring(0, indexOfQuestionMark)
     }
-    return path;
+    return path
   }
 
   private def defineRequestContentTypeAsString(String method) {
@@ -1533,7 +1550,21 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   private boolean shouldAppendCharsetToContentType(contentType) {
-    contentType != null && !(startsWith(contentType.toString(), MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH) || contains(contentType.toString(), MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS)) && restAssuredConfig().encoderConfig.shouldAppendDefaultContentCharsetToContentTypeIfUndefined() && !containsIgnoreCase(contentType.toString(), CHARSET)
+    contentType != null &&
+            !(startsWith(contentType.toString(), MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH) || contains(contentType.toString(), MULTIPART_CONTENT_TYPE_PREFIX_WITH_PLUS)) &&
+            restAssuredConfig().encoderConfig.shouldAppendDefaultContentCharsetToContentTypeIfUndefined() && (
+            isApplicationJsonContentTypeWithDefaultCharsetDefined(contentType) || !(containsIgnoreCase(contentType.toString(), CHARSET) || equalsIgnoreCase(contentType.toString(), APPLICATION_JSON)))
+  }
+
+  private boolean isApplicationJsonContentTypeWithDefaultCharsetDefined(contentType) {
+    if (!startsWith(contentType.toString().toLowerCase(), APPLICATION_JSON)) {
+      return false
+    }
+
+    def encoderConfig = getConfig().getEncoderConfig()
+    //noinspection GroovyAccessibility
+    def contentTypeOrNull = encoderConfig.defaultCharsetForContentTypeOrNull(contentType.toString())
+    contentTypeOrNull != null && (contentTypeOrNull != StandardCharsets.UTF_8.name() || encoderConfig.isUserConfigured())
   }
 
   private String getTargetURI(String path) {
@@ -1582,7 +1613,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   private boolean hasPortDefined(uri) {
-    return uri.getPort() != -1;
+    return uri.getPort() != -1
   }
 
 
@@ -1598,8 +1629,8 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     notNull path, "path"
     notNull trimToNull(method), "Method"
     notNull unnamedPathParams, "Path params"
-    this.method = method.trim().toUpperCase();
-    this.path = path;
+    this.method = method.trim().toUpperCase()
+    this.path = path
     if (unnamedPathParams != null) {
       def nullParamIndices = []
       for (int i = 0; i < unnamedPathParams.length; i++) {
@@ -1609,7 +1640,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       }
       if (!nullParamIndices.isEmpty()) {
         def sizeOne = nullParamIndices.size() == 1
-        throw new IllegalArgumentException("Unnamed path parameter cannot be null (path parameter${sizeOne ? "" : "s"} at ${sizeOne ? "index" : "indices"} ${nullParamIndices.join(",")} ${sizeOne ? "is" : "are"} null)");
+        throw new IllegalArgumentException("Unnamed path parameter cannot be null (path parameter${sizeOne ? "" : "s"} at ${sizeOne ? "index" : "indices"} ${nullParamIndices.join(",")} ${sizeOne ? "is" : "are"} null)")
       }
 
       buildUnnamedPathParameterTuples(unnamedPathParams)
@@ -1663,7 +1694,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   void buildUnnamedPathParameterTuples(Object[] unnamedPathParameterValues) {
     if (unnamedPathParameterValues == null || unnamedPathParameterValues.length == 0) {
-      this.unnamedPathParamsTuples = new ArrayList<Tuple2<String, String>>();
+      this.unnamedPathParamsTuples = new ArrayList<Tuple2<String, String>>()
     } else {
       // Undefined placeholders since named path params have precedence over unnamed
       def keys = getUndefinedPathParamPlaceholders()
@@ -1683,21 +1714,21 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     def host = getTargetURI(path)
     def targetPath = getTargetPath(path)
 
-    def pathWithoutQueryParams = substringBefore(targetPath, "?");
+    def pathWithoutQueryParams = substringBefore(targetPath, "?")
     def shouldAppendSlashAfterEncoding = pathWithoutQueryParams.endsWith("/")
     // The last slash is removed later so we may need to add it again
     def queryParams = substringAfter(path, "?")
 
-    int numberOfUnnamedPathParametersUsed = 0;
+    int numberOfUnnamedPathParametersUsed = 0
     def pathParamNameUsageCount = [:].withDefault { 0 }
 
     def pathTemplate = ~/.*\{\w+\}.*/
     // If a path fragment contains double slash we need to replace it with something else to not mess up the path
     def hasPathParameterWithDoubleSlash = indexOf(pathWithoutQueryParams, DOUBLE_SLASH) != -1
 
-    def tempParams;
+    def tempParams
     if (hasPathParameterWithDoubleSlash) {
-      tempParams = replace(pathWithoutQueryParams, DOUBLE_SLASH, "RA_double_slash__");
+      tempParams = replace(pathWithoutQueryParams, DOUBLE_SLASH, "RA_double_slash__")
     } else {
       tempParams = pathWithoutQueryParams
     }
@@ -1774,7 +1805,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
 
   private String findNamedPathParamValue(String pathParamName, pathParamNameUsageCount) {
-    def pathParamValues = this.namedPathParameters.get(pathParamName);
+    def pathParamValues = this.namedPathParameters.get(pathParamName)
     def pathParamValue
     if (pathParamValues instanceof Collection) {
       def pathParamCount = pathParamNameUsageCount[pathParamName]
@@ -1787,18 +1818,18 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   private String createFormParamBody(Map<String, Object> formParams) {
-    final StringBuilder body = new StringBuilder();
+    final StringBuilder body = new StringBuilder()
     for (Entry<String, Object> entry : formParams.entrySet()) {
-      body.append(encode(entry.getKey(), EncodingTarget.BODY));
+      body.append(encode(entry.getKey(), EncodingTarget.BODY))
       if (!(entry.getValue() instanceof NoParameterValue)) {
-        body.append("=").append(handleMultiValueParamsIfNeeded(entry));
+        body.append("=").append(handleMultiValueParamsIfNeeded(entry))
       }
-      body.append("&");
+      body.append("&")
     }
     if (!formParams.isEmpty()) {
-      body.deleteCharAt(body.length() - 1); //Delete last &
+      body.deleteCharAt(body.length() - 1) //Delete last &
     }
-    return body.toString();
+    return body.toString()
   }
 
 
@@ -1830,7 +1861,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     def value = entry.getValue()
     if (value instanceof List) {
       def key = encode(entry.getKey(), EncodingTarget.BODY)
-      final StringBuilder multiValueList = new StringBuilder();
+      final StringBuilder multiValueList = new StringBuilder()
       value.eachWithIndex { val, index ->
         multiValueList.append(encode(val.toString(), EncodingTarget.BODY))
         if (index != value.size() - 1) {
@@ -1857,7 +1888,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   String getDerivedPath() {
-    def uri = partiallyApplyPathParams(path, true, unnamedPathParamsTuples.collect { it.second })
+    def uri = partiallyApplyPathParams(path, true, unnamedPathParamsTuples.collect { it.v2 })
     getDerivedPath(uri)
   }
 
@@ -1870,8 +1901,8 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   String getURI() {
-    def uri = partiallyApplyPathParams(path, true, unnamedPathParamsTuples.collect { it.second })
-    getURI(uri);
+    def uri = partiallyApplyPathParams(path, true, unnamedPathParamsTuples.collect { it.v2 })
+    getURI(uri)
   }
 
   int getPort() {
@@ -1895,9 +1926,9 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   Map<String, String> getUnnamedPathParams() {
-    // If it.first = null means that it's a placeholder
-    def map = unnamedPathParamsTuples.findAll { it.first != null }.inject([:], { m, t ->
-      m.putAt(t.first, t.second)
+    // If it.v1 = null means that it's a placeholder
+    def map = unnamedPathParamsTuples.findAll { it.v1 != null }.inject([:], { m, t ->
+      m.putAt(t.v1, t.v2)
       m
     })
     return Collections.unmodifiableMap(map)
@@ -1905,9 +1936,9 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   List<String> getUnnamedPathParamValues() {
     return Collections.unmodifiableList(unnamedPathParamsTuples == null ? Collections.emptyList() : unnamedPathParamsTuples.findAll {
-      it.second != null
+      it.v2 != null
     }.collect {
-      it.second
+      it.v2
     })
   }
 
@@ -1961,7 +1992,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   List<String> getUndefinedPathParamPlaceholders() {
-    def uri = partiallyApplyPathParams(path, false, unnamedPathParamsTuples.collect { it.second })
+    def uri = partiallyApplyPathParams(path, false, unnamedPathParamsTuples.collect { it.v2 })
     getPlaceholders(uri)
   }
 
@@ -1992,164 +2023,18 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     this
   }
 
-  private class RestAssuredHttpBuilder extends HTTPBuilder {
-    def assertionClosure
-
-    RestAssuredHttpBuilder(Object defaultURI, assertionClosure, boolean urlEncodingEnabled, RestAssuredConfig config, AbstractHttpClient client) throws URISyntaxException {
-      super(defaultURI, urlEncodingEnabled, config?.getEncoderConfig(), config?.getDecoderConfig(), config?.getOAuthConfig(), client)
-      this.assertionClosure = assertionClosure
-    }
-
-    /**
-     * A copy of HTTP builders doRequest method with two exceptions.
-     * <ol>
-     *  <li>The exception is that the entity's content is not closed if no body matchers are specified.</li>
-     *  <li>If headers contain a list of elements the headers are added and not overridden</li>
-     *  </ol>
-     */
-    protected Object doRequest(HTTPBuilder.RequestConfigDelegate delegate) {
-      if (delegate.getRequest() instanceof HttpPost) {
-        if (assertionClosure != null) {
-          delegate.getResponse().put(
-                  Status.FAILURE.toString(), { response, content ->
-            assertionClosure.call(response, content)
-          });
-        }
-        delegate.uri.query = queryParameters
-      }
-      final HttpRequestBase reqMethod = delegate.getRequest()
-      Object acceptContentType = delegate.getContentType()
-      if (!requestHeaders.hasHeaderWithName("Accept")) {
-        String acceptContentTypes = acceptContentType.toString()
-        if (acceptContentType instanceof ContentType)
-          acceptContentTypes = ((ContentType) acceptContentType).getAcceptHeader()
-        reqMethod.setHeader("Accept", acceptContentTypes)
-      }
-      reqMethod.setURI(delegate.getUri().toURI())
-      if (shouldApplyContentTypeFromRestAssuredConfigDelegate(delegate, reqMethod)) {
-        def contentTypeToUse = trim(delegate.getRequestContentType())
-        reqMethod.setHeader(CONTENT_TYPE, contentTypeToUse);
-      }
-      if (reqMethod.getURI() == null)
-        throw new IllegalStateException("Request URI cannot be null")
-      Map<?, ?> headers1 = delegate.getHeaders()
-      for (Object key : headers1.keySet()) {
-        if (key == null) continue;
-        Object val = headers1.get(key);
-        if (val == null) {
-          reqMethod.removeHeaders(key.toString())
-        } else if (!key.toString().equalsIgnoreCase(CONTENT_TYPE) || !val.toString().startsWith(MULTIPART_CONTENT_TYPE_PREFIX_WITH_SLASH)) {
-          // Don't overwrite multipart header because HTTP Client have added boundary
-          def keyAsString = key.toString()
-          if (val instanceof Collection) {
-            val = val.flatten().collect { it?.toString() }
-            val.each {
-              reqMethod.addHeader(keyAsString, it)
-            }
-          } else {
-            reqMethod.setHeader(keyAsString, val.toString());
-          }
-        }
-      }
-      final HttpResponseDecorator resp = new HttpResponseDecorator(
-              this.client.execute(reqMethod, delegate.getContext()),
-              delegate.getContext(), null)
-      try {
-        int status = resp.getStatusLine().getStatusCode();
-        Closure responseClosure = delegate.findResponseHandler(status);
-
-        Object returnVal;
-        Object[] closureArgs = null;
-        switch (responseClosure.getMaximumNumberOfParameters()) {
-          case 1:
-            returnVal = responseClosure.call(resp);
-            break;
-          case 2: // parse the response entity if the response handler expects it:
-            HttpEntity entity = resp.getEntity();
-            try {
-              if (entity == null || entity.getContentLength() == 0) {
-                returnVal = responseClosure.call(resp, EMPTY);
-              } else {
-                returnVal = responseClosure.call(resp, this.parseResponse(resp, acceptContentType));
-              }
-            } catch (Exception ex) {
-              throw new ResponseParseException(resp, ex);
-            }
-            break;
-          default:
-            throw new IllegalArgumentException(
-                    "Response closure must accept one or two parameters");
-        }
-        return returnVal;
-      }
-      finally {
-        if (responseSpecification.hasBodyAssertionsDefined()) {
-          HttpEntity entity = resp.getEntity();
-          if (entity != null) EntityUtils.consumeQuietly(entity);
-        }
-        // Close idle connections to the server
-        def connectionConfig = connectionConfig()
-        if (connectionConfig.shouldCloseIdleConnectionsAfterEachResponse()) {
-          def closeConnectionConfig = connectionConfig.closeIdleConnectionConfig()
-          client.getConnectionManager().closeIdleConnections(closeConnectionConfig.getIdleTime(), closeConnectionConfig.getTimeUnit());
-        }
-      }
-    }
-
-    /*
-     * Is is for
-     */
-
-    private boolean shouldApplyContentTypeFromRestAssuredConfigDelegate(delegate, HttpRequestBase reqMethod) {
-      def requestContentType = delegate.getRequestContentType()
-      requestContentType != null && requestContentType != ANY.toString() &&
-              (!reqMethod.hasProperty("entity") || reqMethod.entity?.contentType == null) &&
-              !reqMethod.getAllHeaders().any { it.getName().equalsIgnoreCase(CONTENT_TYPE) }
-    }
-
-    /**
-     * We override this method because ParserRegistry.getContentType(..) called by
-     * the super method throws an exception if no content-type is available in the response
-     * and then HTTPBuilder for some reason uses the streaming octet parser instead of the
-     * defaultParser in the ParserRegistry to parse the response. To fix this we set the
-     * content-type of the defaultParser if registered to Rest Assured to the response if no
-     * content-type is defined.
-     */
-    protected Object parseResponse(HttpResponse resp, Object contentType) {
-      Parser definedDefaultParser = responseSpecification.rpr.defaultParser
-      if (definedDefaultParser != null && ANY.toString().equals(contentType.toString())) {
-        try {
-          HttpResponseContentTypeFinder.findContentType(resp);
-        } catch (IllegalArgumentException ignored) {
-          // This means that no content-type is defined the response
-          def entity = resp?.entity
-          if (entity != null) {
-            resp.entity = new HttpEntityWrapper(entity) {
-
-              org.apache.http.Header getContentType() {
-                // We don't use CONTENT_TYPE field because of issue 253 (no tests for this!)
-                return new BasicHeader("Content-Type", definedDefaultParser.getContentType())
-              }
-            }
-          }
-        }
-      }
-      return super.parseResponse(resp, contentType)
-    }
-  }
-
   private def applyProxySettings(RestAssuredHttpBuilder http) {
     // make client aware of JRE proxy settings http://freeside.co/betamax/
     http.client.routePlanner = new RestAssuredProxySelectorRoutePlanner(http.client.connectionManager.schemeRegistry,
             new RestAssuredProxySelector(delegatingProxySelector: ProxySelector.default, proxySpecification: proxySpecification), proxySpecification)
     if (proxySpecification?.hasAuth()) {
-      CredentialsProvider credsProvider = new BasicCredentialsProvider();
+      CredentialsProvider credsProvider = new BasicCredentialsProvider()
       def address = new InetSocketAddress(proxySpecification.host, proxySpecification.port)
       // We need to convert the host to an IP since that's what our proxy selector (RestAssuredProxySelector) expects
       def authScope = new AuthScope(address.getAddress().getHostAddress(), proxySpecification.getPort())
       def credentials = new UsernamePasswordCredentials(proxySpecification.username, proxySpecification.password)
-      credsProvider.setCredentials(authScope, credentials);
-      http.client.setCredentialsProvider(credsProvider);
+      credsProvider.setCredentials(authScope, credentials)
+      http.client.setCredentialsProvider(credsProvider)
     }
   }
 
@@ -2163,7 +2048,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       targetUri = getTargetURI(path)
       targetPath = substringBefore(getTargetPath(path), "?")
     }
-    return mergeAndRemoveDoubleSlash(mergeAndRemoveDoubleSlash(targetUri, targetPath), requestPath);
+    return mergeAndRemoveDoubleSlash(mergeAndRemoveDoubleSlash(targetUri, targetPath), requestPath)
   }
 
   private String findEncoderCharsetOrReturnDefault(String contentType) {
@@ -2186,23 +2071,23 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
   }
 
   private ObjectMapperConfig objectMappingConfig() {
-    return config == null ? ObjectMapperConfig.objectMapperConfig() : config.getObjectMapperConfig();
+    return config == null ? ObjectMapperConfig.objectMapperConfig() : config.getObjectMapperConfig()
   }
 
   private HttpClientConfig httpClientConfig() {
-    return config == null ? HttpClientConfig.httpClientConfig() : config.getHttpClientConfig();
+    return config == null ? HttpClientConfig.httpClientConfig() : config.getHttpClientConfig()
   }
 
   private ConnectionConfig connectionConfig() {
-    return config == null ? ConnectionConfig.connectionConfig() : config.getConnectionConfig();
+    return config == null ? ConnectionConfig.connectionConfig() : config.getConnectionConfig()
   }
 
   private EncoderConfig encoderConfig() {
-    return config == null ? EncoderConfig.encoderConfig() : config.getEncoderConfig();
+    return config == null ? EncoderConfig.encoderConfig() : config.getEncoderConfig()
   }
 
   private SessionConfig sessionConfig() {
-    return config == null ? SessionConfig.sessionConfig() : config.getSessionConfig();
+    return config == null ? SessionConfig.sessionConfig() : config.getSessionConfig()
   }
 
   RestAssuredConfig restAssuredConfig() {
@@ -2254,12 +2139,12 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     unnamedPathParamsTuples.add(indexOfParamName, new Tuple2<String, String>(null, null))
   }
 
-  public void setMethod(String method) {
+  void setMethod(String method) {
     this.method = method == null ? null : method.toUpperCase()
   }
 
   private static int getFilterOrder(Filter filter) {
     return (filter instanceof OrderedFilter) ? ((OrderedFilter) filter).getOrder()
-            : OrderedFilter.DEFAULT_PRECEDENCE;
+            : OrderedFilter.DEFAULT_PRECEDENCE
   }
 }
