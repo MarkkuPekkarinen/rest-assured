@@ -269,7 +269,7 @@ import static io.restassured.specification.ProxySpecification.host;
  *            // or a bit more efficiently:
  *            JsonPath jsonPath = new JsonPath(json).setRootPath("lotto");
  *            int lottoId = jsonPath.getInt("lottoId");
- *            List<Integer> winnderIds = jsonPath.get("winnders.winnderId");
+ *            List<Integer> winnerIds = jsonPath.get("winners.winnerId");
  *        </pre>
  * </li>
  * </ol>
@@ -1452,7 +1452,7 @@ public class RestAssured {
         RestAssuredConfig restAssuredConfig = config();
         return new TestSpecificationImpl(
                 new RequestSpecificationImpl(baseURI, port, basePath, authentication, filters,
-                        requestSpecification, urlEncodingEnabled, restAssuredConfig, logRepository, proxy, true),
+                        requestSpecification, urlEncodingEnabled, restAssuredConfig, logRepository, proxy, true, true),
                 new ResponseSpecificationImpl(rootPath, responseSpecification, responseParserRegistrar, restAssuredConfig, logRepository)
         );
     }

@@ -28,6 +28,7 @@ import io.restassured.filter.log.ResponseLoggingFilter
 import io.restassured.filter.time.TimingFilter
 import io.restassured.http.*
 import io.restassured.internal.MapCreator.CollisionStrategy
+import io.restassured.internal.filter.CsrfFilter
 import io.restassured.internal.filter.FilterContextImpl
 import io.restassured.internal.filter.FormAuthFilter
 import io.restassured.internal.filter.SendRequestFilter
@@ -44,24 +45,16 @@ import io.restassured.internal.support.ParameterUpdater
 import io.restassured.internal.support.PathSupport
 import io.restassured.mapper.ObjectMapper
 import io.restassured.mapper.ObjectMapperType
-import io.restassured.parsing.Parser
 import io.restassured.response.Response
 import io.restassured.specification.*
 import io.restassured.spi.AuthFilter
-import org.apache.http.HttpEntity
-import org.apache.http.HttpResponse
 import org.apache.http.auth.AuthScope
 import org.apache.http.auth.UsernamePasswordCredentials
 import org.apache.http.client.CredentialsProvider
 import org.apache.http.client.HttpClient
-import org.apache.http.client.methods.HttpPost
-import org.apache.http.client.methods.HttpRequestBase
-import org.apache.http.entity.HttpEntityWrapper
 import org.apache.http.entity.mime.FormBodyPartBuilder
 import org.apache.http.impl.client.AbstractHttpClient
 import org.apache.http.impl.client.BasicCredentialsProvider
-import org.apache.http.message.BasicHeader
-import org.apache.http.util.EntityUtils
 
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
@@ -133,9 +126,11 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   private boolean allowContentType
 
+  private boolean addCsrfFilter
+
   RequestSpecificationImpl(String baseURI, int requestPort, String basePath, AuthenticationScheme defaultAuthScheme, List<Filter> filters,
                            RequestSpecification defaultSpec, boolean urlEncode, RestAssuredConfig restAssuredConfig, LogRepository logRepository,
-                           ProxySpecification proxySpecification, boolean allowContentType) {
+                           ProxySpecification proxySpecification, boolean allowContentType, boolean addCsrfFilter) {
     notNull(baseURI, "baseURI")
     notNull(basePath, "basePath")
     notNull(defaultAuthScheme, "defaultAuthScheme")
@@ -154,6 +149,7 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
     this.logRepository = logRepository
     this.proxySpecification = proxySpecification
     this.allowContentType = allowContentType
+    this.addCsrfFilter = addCsrfFilter
   }
 
   RequestSpecification when() {
@@ -666,6 +662,24 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   AuthenticationSpecification auth() {
     return new AuthenticationSpecificationImpl(this)
+  }
+
+  @Override
+  RequestSpecification csrf(String csrfTokenPath) {
+    this.restAssuredConfig = restAssuredConfig().csrfConfig(csrfConfig().csrfTokenPath(csrfTokenPath))
+    return this
+  }
+
+  @Override
+  RequestSpecification csrf(String csrfTokenPath, String csrfInputFieldName) {
+    this.restAssuredConfig = restAssuredConfig().csrfConfig(csrfConfig().csrfTokenPath(csrfTokenPath).csrfInputFieldName(csrfInputFieldName))
+    return this
+  }
+
+  @Override
+  RequestSpecification disableCsrf() {
+    addCsrfFilter = false
+    return noFiltersOfType(CsrfFilter.class)
   }
 
   AuthenticationSpecification authentication() {
@@ -1654,7 +1668,11 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
       // Form auth scheme is handled a bit differently than other auth schemes since it's implemented by a filter.
       def formAuthScheme = authenticationScheme as FormAuthScheme
       filters.removeAll { AuthFilter.class.isAssignableFrom(it.getClass()) }
-      filters.add(0, new FormAuthFilter(userName: formAuthScheme.userName, password: formAuthScheme.password, formAuthConfig: formAuthScheme.config, sessionConfig: sessionConfig()))
+      filters.add(0, new FormAuthFilter(userName: formAuthScheme.userName, password: formAuthScheme.password, formAuthConfig: formAuthScheme.config, sessionConfig: sessionConfig(), csrfConfig: csrfConfig()))
+    }
+
+    if (addCsrfFilter) {
+      filters.add(new CsrfFilter(csrfConfig: restAssuredConfig().csrfConfig))
     }
     def logConfig = restAssuredConfig().getLogConfig()
     if (logConfig.isLoggingOfRequestAndResponseIfValidationFailsEnabled()) {
@@ -2088,6 +2106,10 @@ class RequestSpecificationImpl implements FilterableRequestSpecification, Groovy
 
   private SessionConfig sessionConfig() {
     return config == null ? SessionConfig.sessionConfig() : config.getSessionConfig()
+  }
+
+  private CsrfConfig csrfConfig() {
+    return config == null ? CsrfConfig.csrfConfig() : config.getCsrfConfig()
   }
 
   RestAssuredConfig restAssuredConfig() {

@@ -424,7 +424,7 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		}
 		final RequestSpecificationImpl reqSpec = new RequestSpecificationImpl("http://localhost",
 				RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.emptyList(),
-				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true);
+				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
 		logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, queryParams, formParams, headers, cookies);
 		logRequestBody(reqSpec, requestBody, headers, (List<Object>) (List<?>) multiParts, config);
 		ofNullable(multiParts).map(List::stream).orElseGet(Stream::empty)
@@ -504,8 +504,8 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 
 	private void applyMultipartBody(HttpMethod method, WebTestClient.RequestBodySpec requestBodySpec) {
 		if (!multiParts.isEmpty()) {
-			if (method != POST && method != PUT) {
-				throw new IllegalArgumentException("Currently multi-part file data uploading only works for POST and PUT method.");
+			if (method != POST && method != PUT && method != PATCH) {
+				throw new IllegalArgumentException("Currently multi-part file data uploading only works for POST, PUT and PATCH method.");
 			}
 			requestBodySpec.syncBody(getMultipartBody());
 		}
@@ -609,7 +609,7 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		}
 		final RequestSpecificationImpl reqSpec = new RequestSpecificationImpl("http://localhost",
 				RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.emptyList(),
-				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true);
+				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
 		logParamsAndHeaders(reqSpec, method.toString(), "Request from uri function" + uriFunction.toString(),
 				null, params, queryParams, formParams,
 				headers, cookies);

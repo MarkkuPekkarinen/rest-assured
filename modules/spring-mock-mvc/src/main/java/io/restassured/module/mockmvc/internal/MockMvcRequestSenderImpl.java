@@ -304,7 +304,7 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         final MockHttpServletRequestBuilder request;
         if (multiParts.isEmpty()) {
             request = MockMvcRequestBuilders.request(method, uri, pathParams);
-        } else if (method == POST || method == PUT) {
+        } else if (method == POST || method == PUT || method == PATCH) {
             if (isSpring6OrLater) {
                 request = invokeMethod(MockMvcRequestBuilders.class, "multipart", uri, pathParams);
             } else {
@@ -482,7 +482,7 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         }
 
         final RequestSpecificationImpl reqSpec = new RequestSpecificationImpl("http://localhost", RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.<Filter>emptyList(),
-                null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true);
+                null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
         logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, queryParams, formParams, headers, cookies);
         logRequestBody(reqSpec, requestBody, headers, (List<Object>) (List<?>) multiParts, config);
 
