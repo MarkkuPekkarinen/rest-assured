@@ -36,19 +36,24 @@ import io.restassured.module.mockmvc.response.MockMvcResponse;
 import io.restassured.module.mockmvc.specification.MockMvcRequestAsyncConfigurer;
 import io.restassured.module.mockmvc.specification.MockMvcRequestAsyncSender;
 import io.restassured.module.mockmvc.specification.MockMvcRequestSender;
+import io.restassured.module.mockmvc.util.ReflectionUtil;
 import io.restassured.module.spring.commons.BodyHelper;
 import io.restassured.module.spring.commons.HeaderHelper;
 import io.restassured.module.spring.commons.ParamApplier;
+import io.restassured.module.spring.commons.Serializer;
 import io.restassured.module.spring.commons.config.AsyncConfig;
 import io.restassured.module.spring.commons.config.ConfigConverter;
 import io.restassured.specification.ResponseSpecification;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.RequestBuilder;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultHandler;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -56,23 +61,30 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
-import org.springframework.util.ReflectionUtils;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.io.*;
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
 import java.security.Principal;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 import static io.restassured.internal.common.classpath.ClassPathResolver.existInCP;
 import static io.restassured.internal.support.PathSupport.mergeAndRemoveDoubleSlash;
 import static io.restassured.module.mockmvc.internal.SpringSecurityClassPathChecker.isSpringSecurityInClasspath;
+import static io.restassured.module.mockmvc.util.ReflectionUtil.invokeConstructor;
+import static io.restassured.module.mockmvc.util.ReflectionUtil.invokeMethod;
 import static io.restassured.module.spring.commons.HeaderHelper.mapToArray;
 import static io.restassured.module.spring.commons.RequestLogger.logParamsAndHeaders;
 import static io.restassured.module.spring.commons.RequestLogger.logRequestBody;
@@ -86,9 +98,11 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
     private static final String ATTRIBUTE_NAME_URL_TEMPLATE = "org.springframework.restdocs.urlTemplate";
     private static final String CONTENT_TYPE = "Content-Type";
     private static final boolean isSpring6OrLater = existInCP("org.springframework.aot.AotDetector");
+    private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{([^/]+?)\\}");
 
     private final MockMvc mockMvc;
     private final Map<String, Object> params;
+    private final Map<String, Object> namedPathParams;
     private final Map<String, Object> queryParams;
     private final Map<String, Object> formParams;
     private final Map<String, Object> attributes;
@@ -108,22 +122,23 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
     private final boolean isAsyncRequest;
     private final Map<String, Object> sessionAttributes;
 
-    MockMvcRequestSenderImpl(MockMvc mockMvc, Map<String, Object> params, Map<String, Object> queryParams, Map<String, Object> formParams, Map<String, Object> attributes,
+    MockMvcRequestSenderImpl(MockMvc mockMvc, Map<String, Object> params, Map<String, Object> namedPathParams, Map<String, Object> queryParams, Map<String, Object> formParams, Map<String, Object> attributes,
                              RestAssuredMockMvcConfig config, Object requestBody, Headers headers, Cookies cookies, Map<String, Object> sessionAttributes,
                              List<MockMvcMultiPart> multiParts, RequestLoggingFilter requestLoggingFilter, List<ResultHandler> resultHandlers,
                              List<RequestPostProcessor> requestPostProcessors, MockHttpServletRequestBuilderInterceptor interceptor, String basePath, ResponseSpecification responseSpecification,
                              Object authentication, LogRepository logRepository) {
-        this(mockMvc, params, queryParams, formParams, attributes, config, requestBody, headers, cookies, sessionAttributes, multiParts, requestLoggingFilter, resultHandlers, requestPostProcessors, interceptor,
+        this(mockMvc, params, namedPathParams, queryParams, formParams, attributes, config, requestBody, headers, cookies, sessionAttributes, multiParts, requestLoggingFilter, resultHandlers, requestPostProcessors, interceptor,
                 basePath, responseSpecification, authentication, logRepository, false);
     }
 
-    private MockMvcRequestSenderImpl(MockMvc mockMvc, Map<String, Object> params, Map<String, Object> queryParams, Map<String, Object> formParams, Map<String, Object> attributes,
+    private MockMvcRequestSenderImpl(MockMvc mockMvc, Map<String, Object> params, Map<String, Object> namedPathParams, Map<String, Object> queryParams, Map<String, Object> formParams, Map<String, Object> attributes,
                                      RestAssuredMockMvcConfig config, Object requestBody, Headers headers, Cookies cookies, Map<String, Object> sessionAttributes,
                                      List<MockMvcMultiPart> multiParts, RequestLoggingFilter requestLoggingFilter, List<ResultHandler> resultHandlers,
                                      List<RequestPostProcessor> requestPostProcessors, MockHttpServletRequestBuilderInterceptor interceptor, String basePath, ResponseSpecification responseSpecification,
                                      Object authentication, LogRepository logRepository, boolean isAsyncRequest) {
         this.mockMvc = mockMvc;
         this.params = params;
+        this.namedPathParams = namedPathParams;
         this.queryParams = queryParams;
         this.formParams = formParams;
         this.attributes = attributes;
@@ -194,7 +209,7 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
             } catch(IllegalArgumentException e) {
             	// Do nothing as only found on MockCookie
             }
-            
+
             try {
                 ZonedDateTime expires = invokeMethod(servletCookie, "getExpires");
                 if(expires != null) {
@@ -210,28 +225,30 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
     }
 
     @SuppressWarnings("unchecked")
-    private MockMvcResponse performRequest(MockHttpServletRequestBuilder requestBuilder) {
+    private MockMvcResponse performRequest(Object requestBuilder) {
         MockHttpServletResponse response;
 
         if (interceptor != null) {
-            interceptor.intercept(requestBuilder);
+			ReflectionUtil.invokeMethod(interceptor, "intercept", new Class[] { MockHttpServletRequestBuilder.class }, requestBuilder);
         }
 
         if (isSpringSecurityInClasspath() && authentication instanceof org.springframework.security.core.Authentication) {
             org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication((org.springframework.security.core.Authentication) authentication);
         }
         if (authentication instanceof Principal) {
-            requestBuilder.principal((Principal) authentication);
+			// To support Spring Framework 7
+			ReflectionUtil.invokeMethod(requestBuilder, "principal", new Class[] { Principal.class },  authentication);
         }
 
         for (RequestPostProcessor requestPostProcessor : requestPostProcessors) {
-            requestBuilder.with(requestPostProcessor);
+			// To support Spring Framework 7
+			ReflectionUtil.invokeMethod(requestBuilder, "with", new Class[] { RequestPostProcessor.class }, requestPostProcessor);
         }
 
         MockMvcRestAssuredResponseImpl restAssuredResponse;
         try {
             final long start = System.currentTimeMillis();
-            ResultActions perform = mockMvc.perform(requestBuilder);
+            ResultActions perform = mockMvc.perform((RequestBuilder) requestBuilder);
             final long responseTime = System.currentTimeMillis() - start;
             if (!resultHandlers.isEmpty()) {
                 for (ResultHandler resultHandler : resultHandlers) {
@@ -299,20 +316,71 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         return builder.toString();
     }
 
-    private MockMvcResponse sendRequest(HttpMethod method, String path, Object[] pathParams) {
+    private MockMvcResponse sendRequest(HttpMethod method, String path, Object[] unnamedPathParams) {
         notNull(path, "Path");
+        verifyNoBodyAndMultipartTogether();
+
+        final String baseUri = buildBaseUri(path);
+        final UriComponentsBuilder uriComponentsBuilder = UriComponentsBuilder.fromUriString(baseUri);
+
+        applyQueryParams(uriComponentsBuilder);
+        // Use the explicitly set content type, like named path params, not a derived one such as "multipart/form-data"
+        applyPathParams(uriComponentsBuilder, baseUri, unnamedPathParams, headers.getValue(CONTENT_TYPE));
+
+        final String uri = uriComponentsBuilder.build().toUriString();
+        final Object request =  applyMultiPartsAndGetRequest(method, uri, unnamedPathParams);
+
+        String requestContentType = HeaderHelper.findContentType(headers, (List<Object>) (List<?>) multiParts, config);
+        applyParams(request, method, requestContentType);
+
+        applyFormParams(request, method, requestContentType);
+        applyAttributes(request);
+
+        if (RestDocsClassPathChecker.isSpringRestDocsInClasspath() && config.getMockMvcConfig().shouldAutomaticallyApplySpringRestDocsMockMvcSupport()) {
+			ReflectionUtil.invokeMethod(request, "requestAttr", new Class[] { String.class, Object.class }, ATTRIBUTE_NAME_URL_TEMPLATE, PathSupport.getPath(baseUri));
+        }
+
+        applyHeaders(request);
+
+        if (StringUtils.isNotBlank(requestContentType)) {
+			// To support Spring Framework 7
+			ReflectionUtil.invokeMethod(request, "contentType", new Class[] { MediaType.class }, MediaType.parseMediaType(requestContentType));
+        }
+
+        applyCookies(request);
+
+        if (!sessionAttributes.isEmpty()) {
+			// To support Spring Framework 7
+			ReflectionUtil.invokeMethod(request, "sessionAttrs", new Class[] { Map.class }, sessionAttributes);
+        }
+
+        try {
+            applyMultipartBody(request);
+        } catch (IOException e) {
+            return SafeExceptionRethrower.safeRethrow(e);
+        }
+
+        applyRequestBody(request);
+        logRequestIfApplicable(method, baseUri, path, unnamedPathParams);
+
+        return performRequest(request);
+    }
+
+    private void verifyNoBodyAndMultipartTogether() {
         if (requestBody != null && !multiParts.isEmpty()) {
             throw new IllegalStateException("You cannot specify a request body and a multi-part body in the same request. Perhaps you want to change the body to a multi part?");
         }
+    }
 
-        String baseUri;
+    private String buildBaseUri(final String path) {
         if (isNotBlank(basePath)) {
-            baseUri = mergeAndRemoveDoubleSlash(basePath, path);
-        } else {
-            baseUri = path;
+            return mergeAndRemoveDoubleSlash(basePath, path);
         }
 
-        final UriComponentsBuilder uriComponentsBuilder = UriComponentsBuilder.fromUriString(baseUri);
+        return path;
+    }
+
+    private void applyQueryParams(final UriComponentsBuilder uriComponentsBuilder) {
         if (!queryParams.isEmpty()) {
             new ParamApplier(queryParams) {
                 @Override
@@ -321,32 +389,85 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
                 }
             }.applyParams();
         }
-        String uri = uriComponentsBuilder.build().toUriString();
+    }
 
-        final MockHttpServletRequestBuilder request;
-        if (multiParts.isEmpty()) {
-            request = MockMvcRequestBuilders.request(method, uri, pathParams);
-        } else if (method == POST || method == PUT || method == PATCH) {
-            if (isSpring6OrLater) {
-                request = invokeMethod(MockMvcRequestBuilders.class, "multipart", uri, pathParams);
-            } else {
-                request = invokeMethod(MockMvcRequestBuilders.class, "fileUpload", new Class[]{String.class, Object[].class}, uri, pathParams);
+    private void applyPathParams(
+            final UriComponentsBuilder uriComponentsBuilder,
+            final String baseUri,
+            final Object[] unnamedPathParams,
+            final String pathParamContentType
+    ) {
+        final Matcher pathParamMatcher = PATH_PARAM_PATTERN.matcher(baseUri);
+        if (!pathParamMatcher.find()) {
+            return;
+        }
+
+        if (namedPathParams.isEmpty() && ArrayUtils.isEmpty(unnamedPathParams)) {
+            throw new IllegalArgumentException("No values were found for the request's pathParams.");
+        }
+
+        final AtomicInteger nextUnnamedPathParamIndex = new AtomicInteger(0);
+        final Function<String, Optional<Object>> getPathParamValueFunction = param -> {
+            if (namedPathParams.containsKey(param)) {
+                return Optional.of(namedPathParams.get(param));
             }
-            request.with(req -> {
-                req.setMethod(method.name());
-                return req;
-            });
+
+            if (unnamedPathParams.length > 0) {
+                Object unnamedPathParam = unnamedPathParams[nextUnnamedPathParamIndex.getAndIncrement()];
+                return Optional.of(Serializer.serializeParameterIfNeeded(unnamedPathParam, pathParamContentType, config));
+            }
+
+            return Optional.empty();
+        };
+
+        final Map<String, Object> uriVariables = new HashMap<>();
+        do {
+            final String paramName = pathParamMatcher.group(1);
+            getPathParamValueFunction.apply(paramName).ifPresent(paramValue ->
+                    uriVariables.put(paramName, paramValue)
+            );
+        } while (pathParamMatcher.find());
+
+        uriComponentsBuilder.uriVariables(uriVariables);
+    }
+
+    private Object applyMultiPartsAndGetRequest(
+            final HttpMethod method,
+            final String uri,
+            final Object[] unnamedPathParams
+    ) {
+        if (multiParts.isEmpty()) {
+            return MockMvcRequestBuilders.request(method, uri, unnamedPathParams);
+        }
+
+        if (method == POST || method == PUT || method == PATCH) {
+            final Object request = isSpring6OrLater
+                    ? invokeMethod(MockMvcRequestBuilders.class, "multipart", new Class[]{String.class, Object[].class}, uri, unnamedPathParams)
+                    : invokeMethod(MockMvcRequestBuilders.class, "fileUpload", new Class[]{String.class, Object[].class}, uri, unnamedPathParams);
+			return ReflectionUtil.invokeMethod(request, "with", new Class[] { RequestPostProcessor.class },
+					new RequestPostProcessor() {
+					@Override
+					public MockHttpServletRequest postProcessRequest(MockHttpServletRequest request) {
+						request.setMethod(method.name());
+						return request;
+					}
+				});
         } else {
             throw new IllegalArgumentException("Currently multi-part file data uploading only works for POST and PUT methods");
         }
+    }
 
-        String requestContentType = HeaderHelper.findContentType(headers, (List<Object>) (List<?>) multiParts, config);
-
+    private void applyParams(
+            final Object request,
+            final HttpMethod method,
+            final String requestContentType
+    ) {
         if (!params.isEmpty()) {
             new ParamApplier(params) {
                 @Override
                 protected void applyParam(String paramName, String[] paramValues) {
-                    request.param(paramName, paramValues);
+					// To support Spring Framework 7
+					ReflectionUtil.invokeMethod(request, "param", new Class[] { String.class, String[].class }, paramName, paramValues);
                 }
             }.applyParams();
 
@@ -354,7 +475,13 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
                 setContentTypeToApplicationFormUrlEncoded(request);
             }
         }
+    }
 
+    private void applyFormParams(
+            final Object request,
+            final HttpMethod method,
+            final String requestContentType
+    ) {
         if (!formParams.isEmpty()) {
             if (method == GET) {
                 throw new IllegalArgumentException("Cannot use form parameters in a GET request");
@@ -362,7 +489,8 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
             new ParamApplier(formParams) {
                 @Override
                 protected void applyParam(String paramName, String[] paramValues) {
-                    request.param(paramName, paramValues);
+					// To support Spring Framework 7
+					ReflectionUtil.invokeMethod(request, "param", new Class[] { String.class, String[].class }, paramName, paramValues);
                 }
             }.applyParams();
 
@@ -371,39 +499,34 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
                 setContentTypeToApplicationFormUrlEncoded(request);
             }
         }
+    }
 
+    private void applyAttributes(final Object request) {
         if (!attributes.isEmpty()) {
             new ParamApplier(attributes) {
                 @Override
                 protected void applyParam(String paramName, String[] paramValues) {
-                    request.requestAttr(paramName, paramValues[0]);
+					// To support Spring Framework 7
+					ReflectionUtil.invokeMethod(request, "requestAttr", new Class[] { String.class, Object.class }, paramName, paramValues[0]);
                 }
             }.applyParams();
         }
+    }
 
-
-        if (RestDocsClassPathChecker.isSpringRestDocsInClasspath() && config.getMockMvcConfig().shouldAutomaticallyApplySpringRestDocsMockMvcSupport()) {
-            request.requestAttr(ATTRIBUTE_NAME_URL_TEMPLATE, PathSupport.getPath(uri));
-        }
-
+    private void applyHeaders(final Object request) {
         if (headers.exist()) {
             for (Header header : headers) {
-                request.header(header.getName(), header.getValue());
+				List<Object> args = new ArrayList<>();
+				args.add(header.getValue());
+				ReflectionUtil.invokeMethod(request, "header", new Class[] { String.class, Object[].class }, header.getName(), args.toArray());
             }
         }
+    }
 
-        if (StringUtils.isNotBlank(requestContentType)) {
-            request.contentType(MediaType.parseMediaType(requestContentType));
-        }
-
+    private void applyCookies(final Object request) {
         if (cookies.exist()) {
             for (Cookie cookie : cookies) {
-                final String cookieClassName;
-                if (isSpring6OrLater) {
-                    cookieClassName = "jakarta.servlet.http.Cookie";
-                } else {
-                    cookieClassName = "javax.servlet.http.Cookie";
-                }
+                final String cookieClassName = resolveServletCookieClassName(request);
                 final Object servletCookie = invokeConstructor(cookieClassName, cookie.getName(), cookie.getValue());
 
                 if (cookie.hasComment()) {
@@ -425,13 +548,52 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
                 invokeMethod(request, "cookie", new Class[]{arrayNameOf(cookieClassName)}, servletCookie);
             }
         }
+    }
 
-        if (!sessionAttributes.isEmpty()) {
-            request.sessionAttrs(sessionAttributes);
+    private String resolveServletCookieClassName(Object request) {
+        final String jakartaCookieClassName = "jakarta.servlet.http.Cookie";
+        final String javaxCookieClassName = "javax.servlet.http.Cookie";
+
+        Class<?> jakartaCookieClass = loadClassIfPresent(jakartaCookieClassName);
+        if (jakartaCookieClass != null && hasCookieMethod(request, jakartaCookieClass)) {
+            return jakartaCookieClassName;
         }
 
+        Class<?> javaxCookieClass = loadClassIfPresent(javaxCookieClassName);
+        if (javaxCookieClass != null && hasCookieMethod(request, javaxCookieClass)) {
+            return javaxCookieClassName;
+        }
+
+        if (jakartaCookieClass != null) {
+            return jakartaCookieClassName;
+        }
+        if (javaxCookieClass != null) {
+            return javaxCookieClassName;
+        }
+
+        throw new IllegalStateException("Neither jakarta.servlet.http.Cookie nor javax.servlet.http.Cookie was found in the classpath.");
+    }
+
+    private static Class<?> loadClassIfPresent(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean hasCookieMethod(Object request, Class<?> cookieClass) {
+        try {
+            Class<?> arrayClass = java.lang.reflect.Array.newInstance(cookieClass, 0).getClass();
+            request.getClass().getMethod("cookie", arrayClass);
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
+    }
+
+    private void applyMultipartBody(final Object request) throws IOException {
         if (!multiParts.isEmpty()) {
-            MockMultipartHttpServletRequestBuilder multiPartRequest = (MockMultipartHttpServletRequestBuilder) request;
             for (MockMvcMultiPart multiPart : multiParts) {
                 MockMultipartFile multipartFile;
                 String fileName = multiPart.getFileName();
@@ -442,43 +604,39 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
                 } else if (multiPart.isFile() || multiPart.isInputStream()) {
                     InputStream inputStream;
                     if (multiPart.isFile()) {
-                        try {
-                            inputStream = new FileInputStream((File) multiPart.getContent());
-                        } catch (FileNotFoundException e) {
-                            return SafeExceptionRethrower.safeRethrow(e);
-                        }
+                        inputStream = new FileInputStream((File) multiPart.getContent());
                     } else {
                         inputStream = (InputStream) multiPart.getContent();
                     }
-                    try {
-                        multipartFile = new MockMultipartFile(controlName, fileName, mimeType, inputStream);
-                    } catch (IOException e) {
-                        return SafeExceptionRethrower.safeRethrow(e);
-                    }
+                    multipartFile = new MockMultipartFile(controlName, fileName, mimeType, inputStream);
                 } else { // String
                     multipartFile = new MockMultipartFile(controlName, fileName, mimeType, ((String) multiPart.getContent()).getBytes());
                 }
-                multiPartRequest.file(multipartFile);
+				ReflectionUtil.invokeMethod(request, "file", new Class[] { MockMultipartFile.class }, multipartFile);
             }
         }
-
-        if (requestBody != null) {
-            if (requestBody instanceof byte[]) {
-                request.content((byte[]) requestBody);
-            } else if (requestBody instanceof File) {
-                byte[] bytes = BodyHelper.toByteArray((File) requestBody);
-                request.content(bytes);
-            } else {
-                request.content(requestBody.toString());
-            }
-        }
-
-        logRequestIfApplicable(method, baseUri, path, pathParams);
-
-        return performRequest(request);
     }
 
-    private Class<?> arrayNameOf(String cookieClassName) {
+    private void applyRequestBody(final Object request) {
+        if (requestBody != null) {
+            if (requestBody instanceof byte[]) {
+				callContent(request, (byte[]) requestBody);
+            } else if (requestBody instanceof File) {
+                byte[] bytes = BodyHelper.toByteArray((File) requestBody);
+				callContent(request, bytes);
+			} else {
+				// To support Spring Framework 7
+				ReflectionUtil.invokeMethod(request, "content", new Class[] { String.class }, requestBody.toString());
+            }
+        }
+    }
+
+	private static void callContent(Object request, byte[] bytes) {
+		// To support Spring Framework 7
+		ReflectionUtil.invokeMethod(request, "content", new Class[] { byte[].class }, bytes);
+	}
+
+	private Class<?> arrayNameOf(String cookieClassName) {
         try {
             return Class.forName("[L" + cookieClassName + ";");
         } catch (ClassNotFoundException e) {
@@ -486,15 +644,16 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         }
     }
 
-    private void setContentTypeToApplicationFormUrlEncoded(MockHttpServletRequestBuilder request) {
+    private void setContentTypeToApplicationFormUrlEncoded(Object request) {
         MediaType mediaType = MediaType.parseMediaType(HeaderHelper.buildApplicationFormEncodedContentType(config, APPLICATION_FORM_URLENCODED_VALUE));
-        request.contentType(mediaType);
+		// To support Spring Framework 7
+		ReflectionUtil.invokeMethod(request, "contentType", new Class[] { MediaType.class }, mediaType);
         List<Header> newHeaders = new ArrayList<>(headers.asList());
         newHeaders.add(new Header(CONTENT_TYPE, mediaType.toString()));
         headers = new Headers(newHeaders);
     }
 
-    private boolean isInMultiPartMode(MockHttpServletRequestBuilder request) {
+    private boolean isInMultiPartMode(Object request) {
         return request instanceof MockMultipartHttpServletRequestBuilder;
     }
 
@@ -505,7 +664,7 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
 
         final RequestSpecificationImpl reqSpec = new RequestSpecificationImpl("http://localhost", RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.<Filter>emptyList(),
                 null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
-        logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, queryParams, formParams, headers, cookies);
+        logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, namedPathParams, queryParams, formParams, headers, cookies);
         logRequestBody(reqSpec, requestBody, headers, (List<Object>) (List<?>) multiParts, config);
 
         if (multiParts != null) {
@@ -579,6 +738,14 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         return options(path, mapToArray(pathParams));
     }
 
+    public MockMvcResponse query(String path, Object... pathParams) {
+        return sendRequest(queryHttpMethod(), path, pathParams);
+    }
+
+    public MockMvcResponse query(String path, Map<String, ?> pathParams) {
+        return query(path, mapToArray(pathParams));
+    }
+
     public MockMvcResponse get(URI uri) {
         return get(uri.toString());
     }
@@ -605,6 +772,10 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
 
     public MockMvcResponse options(URI uri) {
         return options(uri.toString());
+    }
+
+    public MockMvcResponse query(URI uri) {
+        return query(uri.toString());
     }
 
     public MockMvcResponse get(URL url) {
@@ -635,6 +806,10 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
         return options(url.toString());
     }
 
+    public MockMvcResponse query(URL url) {
+        return query(url.toString());
+    }
+
     public MockMvcResponse get() {
         return get("");
     }
@@ -661,6 +836,10 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
 
     public MockMvcResponse options() {
         return options("");
+    }
+
+    public MockMvcResponse query() {
+        return query("");
     }
 
     public MockMvcResponse request(Method method) {
@@ -705,7 +884,7 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
 
     public MockMvcRequestAsyncConfigurer timeout(long duration, TimeUnit timeUnit) {
         RestAssuredMockMvcConfig newConfig = config.asyncConfig(new AsyncConfig(duration, timeUnit));
-        return new MockMvcRequestSenderImpl(mockMvc, params, queryParams, formParams,
+        return new MockMvcRequestSenderImpl(mockMvc, params, namedPathParams, queryParams, formParams,
                 attributes, newConfig, requestBody, headers, cookies, sessionAttributes, multiParts, requestLoggingFilter, resultHandlers, requestPostProcessors, interceptor,
                 basePath, responseSpecification, authentication, logRepository, isAsyncRequest);
     }
@@ -719,70 +898,35 @@ class MockMvcRequestSenderImpl implements MockMvcRequestSender, MockMvcRequestAs
     }
 
     public MockMvcRequestAsyncConfigurer async() {
-        return new MockMvcRequestSenderImpl(mockMvc, params, queryParams, formParams,
+        return new MockMvcRequestSenderImpl(mockMvc, params, namedPathParams, queryParams, formParams,
                 attributes, config, requestBody, headers, cookies, sessionAttributes, multiParts, requestLoggingFilter, resultHandlers, requestPostProcessors, interceptor,
                 basePath, responseSpecification, authentication, logRepository, true);
     }
 
     private HttpMethod toValidHttpMethod(String method) {
         String httpMethodAsString = notNull(trimToNull(method), "HTTP Method");
-        HttpMethod httpMethod = HttpMethod.resolve(httpMethodAsString.toUpperCase());
-        if (httpMethod == null) {
+        try {
+            // As of Spring Framework 7, HttpMethod.valueOf no longer restricts its input to the set of
+            // known HTTP methods (it accepts and creates a custom HttpMethod for any string). MockMvc still
+            // only supports the methods defined by org.springframework.web.bind.annotation.RequestMethod (and QUERY), so
+            // validate against that enum to preserve the original "unsupported HTTP verb" behavior.
+            if (io.restassured.http.Method.QUERY.name().equalsIgnoreCase(httpMethodAsString)) {
+                return queryHttpMethod();
+            }
+            org.springframework.web.bind.annotation.RequestMethod.valueOf(httpMethodAsString.toUpperCase(Locale.ROOT));
+            return HttpMethod.valueOf(httpMethodAsString.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("HTTP method '" + method + "' is not supported by MockMvc");
         }
-        return httpMethod;
     }
 
-    private static <T> T invokeMethod(Object instance, String methodName, Object... arguments) {
-        Class<?>[] argumentTypes = getArgumentTypes(arguments);
-        return invokeMethod(instance, methodName, argumentTypes, arguments);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T invokeMethod(Object instance, String methodName, Class<?>[] argumentTypes, Object... arguments) {
-        java.lang.reflect.Method method = ReflectionUtils.findMethod(instance instanceof Class ? (Class<?>) instance : instance.getClass(), methodName, argumentTypes);
-        if (method == null) {
-            throw new IllegalArgumentException("Cannot find method '" + methodName + "' in " + instance.getClass() + " (arguments=" + Arrays.toString(arguments) + ")");
-        }
-        if (method.isVarArgs()) {
-            Class<?> argumentType = argumentTypes[argumentTypes.length - 1];
-            if (argumentType.isArray()) {
-                argumentType = argumentType.getComponentType();
-            }
-            int numberOfVarArgParameters = arguments.length - argumentTypes.length + 1;
-            Object varArgsArguments = Array.newInstance(argumentType, numberOfVarArgParameters);
-            for (int i = arguments.length - argumentTypes.length; i < numberOfVarArgParameters; i++) {
-                Array.set(varArgsArguments, i, arguments[i]);
-            }
-
-            Object[] objectArrayNeededForInvocation = new Object[argumentTypes.length];
-            if (arguments.length - 1 >= 0) {
-                System.arraycopy(arguments, 0, objectArrayNeededForInvocation, 0, arguments.length - 1);
-            }
-            objectArrayNeededForInvocation[argumentTypes.length - 1] = varArgsArguments;
-            return (T) ReflectionUtils.invokeMethod(method, instance, objectArrayNeededForInvocation);
-        } else {
-            return (T) ReflectionUtils.invokeMethod(method, instance, arguments);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T invokeConstructor(String className, Object... arguments) {
-        Class<?>[] argumentTypes = getArgumentTypes(arguments);
+    // Spring Framework 6 and 7 have no HttpMethod.QUERY constant, but HttpMethod.valueOf accepts any method name.
+    // In Spring 5 HttpMethod is an enum without QUERY, so resolve it lazily to keep the other methods working there.
+    private static HttpMethod queryHttpMethod() {
         try {
-            Class<T> cls = (Class<T>) Class.forName(className);
-            Constructor<T> constructor = cls.getConstructor(argumentTypes);
-            return constructor.newInstance(arguments);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+            return HttpMethod.valueOf(io.restassured.http.Method.QUERY.name());
+        } catch (IllegalArgumentException e) {
+            throw new UnsupportedOperationException("The HTTP QUERY method requires Spring Framework 6 or later", e);
         }
-    }
-
-    private static Class<?>[] getArgumentTypes(Object[] arguments) {
-        Class<?>[] argumentTypes = new Class[arguments.length];
-        for (int i = 0; i < arguments.length; i++) {
-            argumentTypes[i] = arguments[i].getClass();
-        }
-        return argumentTypes;
     }
 }

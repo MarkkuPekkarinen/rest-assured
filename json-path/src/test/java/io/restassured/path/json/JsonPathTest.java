@@ -20,17 +20,25 @@ import io.restassured.common.mapper.TypeRef;
 import io.restassured.path.json.config.JsonPathConfig;
 import io.restassured.path.json.exception.JsonPathException;
 import io.restassured.path.json.support.Book;
+import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator.ReplaceUnderscores;
+import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
+import static org.hamcrest.collection.IsEmptyCollection.empty;
 
+@DisplayNameGeneration(ReplaceUnderscores.class)
 public class JsonPathTest {
 
     private final String JSON = "{ \"store\": {\n" +
@@ -258,6 +266,18 @@ public class JsonPathTest {
     }
 
     @Test
+    public void getLastValueFromUnnamedRootObjectUsingBrackets() {
+        final Map<String, String> object = JsonPath.from(JSON2).get("[-1]");
+        assertThat(object.get("email"), equalTo("name3@mail.com"));
+    }
+
+    @Test
+    public void getLastSubValueFromUnnamedRootObjectUsingBrackets() {
+        final String object = JsonPath.from(JSON2).getString("[-1].email");
+        assertThat(object, equalTo("name3@mail.com"));
+    }
+
+    @Test
     public void getNumericalValues() {
         assertThat(JsonPath.with(JSON).getDouble("store.book[0].price"), equalTo(8.95D));
         assertThat(JsonPath.with(JSON).getFloat("store.book[0].price"), equalTo(8.95F));
@@ -338,9 +358,11 @@ public class JsonPathTest {
         assertThat(priceAsString, is("8.95"));
     }
 
-    @Test(expected = JsonPathException.class)
+    @Test
     public void malformedJson() {
-        JsonPath.from(MALFORMED_JSON).get("a");
+        Throwable throwable = catchThrowable(() -> JsonPath.from(MALFORMED_JSON).get("a"));
+
+        Assertions.assertThat(throwable).isInstanceOf(JsonPathException.class);
     }
 
     @Test
@@ -544,6 +566,145 @@ public class JsonPathTest {
     }
 
     @Test
+    void parses_immediate_properties_in_map_structure_not_wrapped_in_list() {
+        // Given
+        final String jsonWithPropertyAttribute = """
+                {
+                  "name": "John",
+                  "age": 30,
+                  "properties": {
+                    "height": 175,
+                    "weight": 70
+                  },
+                  "city": "New York",
+                  "skills": [
+                    "Java",
+                    "Groovy",
+                    "Kotlin"
+                  ],
+                  "address": {
+                    "street": "5th Avenue",
+                    "number": 10
+                  }
+                }
+                """; // properties is a reserved word in Groovy
+
+        // When
+        final int value = new JsonPath(jsonWithPropertyAttribute).getInt("properties.height");
+
+        // Then
+        assertThat(value, equalTo(175));
+    }
+
+    @Test
+    void parses_nested_properties_in_map_structure_not_wrapped_in_list() {
+        // Given
+        final String jsonWithPropertyAttribute = """
+                {
+                     "person": {
+                       "name": "John",
+                       "age": 30,
+                       "properties": {
+                         "height": 175,
+                         "weight": 70
+                       },
+                       "city": "New York",
+                       "skills": [
+                         "Java",
+                         "Groovy",
+                         "Kotlin"
+                       ],
+                       "address": {
+                         "street": "5th Avenue",
+                         "number": 10
+                       }
+                     }
+                   }
+                """; // properties is a reserved word in Groovy
+
+        // When
+        final int value = new JsonPath(jsonWithPropertyAttribute).getInt("person.properties.height");
+
+        // Then
+        assertThat(value, equalTo(175));
+    }
+
+    @Test
+    void parses_immediate_and_nested_properties_in_map_structure_not_wrapped_in_list() {
+        // Given
+        final String jsonWithPropertyAttribute = """
+                {
+                  "name": "John",
+                  "age": 30,
+                  "properties": {
+                    "properties": {
+                        "height": 175,
+                        "weight": 70
+                    }
+                  },
+                  "city": "New York",
+                  "skills": [
+                    "Java",
+                    "Groovy",
+                    "Kotlin"
+                  ],
+                  "address": {
+                    "street": "5th Avenue",
+                    "number": 10
+                  }
+                }
+                """; // properties is a reserved word in Groovy
+
+        // When
+        final int value = new JsonPath(jsonWithPropertyAttribute).getInt("properties.properties.height");
+
+        // Then
+        assertThat(value, equalTo(175));
+    }
+
+    @Test
+    void gets_values_of_keys_that_contain_a_colon_with_the_dot_notation() {
+        // Given
+        final JsonPath jsonPath = new JsonPath("{\"message\":{\"ErrorCode:\":0,\"ErrorMsg:\":\"Success\",\"urn:a:b\":[1,2]}}");
+
+        // Then
+        assertThat(jsonPath.getInt("message.ErrorCode:"), equalTo(0));
+        assertThat(jsonPath.getString("message.ErrorMsg:"), equalTo("Success"));
+        assertThat(jsonPath.getList("message.urn:a:b", Integer.class), contains(1, 2));
+        assertThat(jsonPath.getInt("message.urn:a:b[1]"), equalTo(2));
+        assertThat(jsonPath.getInt("message.urn:a:b.size()"), equalTo(2));
+        assertThat(jsonPath.getInt("message.'ErrorCode:'"), equalTo(0));
+        assertThat(jsonPath.getInt("message['ErrorCode:']"), equalTo(0));
+        assertThat(jsonPath.getInt("message.\"ErrorCode:\""), equalTo(0));
+        assertThat(jsonPath.getInt("message?.ErrorCode:"), equalTo(0));
+        assertThat(jsonPath.setRootPath("message").getInt("ErrorCode:"), equalTo(0));
+    }
+
+    @Test
+    void colons_in_ternary_elvis_and_map_literal_expressions_are_not_escaped() {
+        // Given
+        final JsonPath jsonPath = new JsonPath(JSON).param("yes", "Y").param("no", "N").param("p", Map.of("v", "V"));
+
+        // Then
+        assertThat(jsonPath.getString("store.bicycle.price > 10 ? 'expensive' : 'cheap'"), equalTo("expensive"));
+        assertThat(jsonPath.getInt("store.bicycle.price > 10 ? 1 : 0"), equalTo(1));
+        assertThat(jsonPath.getInt("store.bicycle.price>10?1:0"), equalTo(1));
+        assertThat(jsonPath.getString("store.bicycle.price > 10 ? yes : no"), equalTo("Y"));
+        assertThat(jsonPath.getInt("store.bicycle.missing ?: 0"), equalTo(0));
+        assertThat(jsonPath.getInt("store.bicycle.missing?:0"), equalTo(0));
+        assertThat(jsonPath.getList("store.book.collect { [t: it.title, a: it.author] }.a"), hasItem("Herman Melville"));
+        assertThat(jsonPath.getFloat("store.book.find { it.title + ':' == 'Moby Dick:' }.price"), equalTo(8.99f));
+        assertThat(jsonPath.getList("store.book.price.collect { it > 10 ? 'high' : 'low' }"), contains("low", "high", "low", "high"));
+        assertThat(jsonPath.getFloat("store.book.collectEntries { [(it.title + ':'): it.price] }.'Moby Dick:'"), equalTo(8.99f));
+        assertThat(jsonPath.getList("store.book.collect{it.price>10?it.title:it.author}"), contains("Nigel Rees", "Sword of Honour", "Herman Melville", "The Lord of the Rings"));
+        assertThat(jsonPath.getList("store.book.collect{b->b.price>10?b.title:b.author}"), contains("Nigel Rees", "Sword of Honour", "Herman Melville", "The Lord of the Rings"));
+        assertThat(jsonPath.getInt("store.book.collect{it.price>10?it.title:it.author}.size()"), equalTo(4));
+        assertThat(jsonPath.getList("store.book.findAll{it.price>10?it.isbn:false}.title"), contains("The Lord of the Rings"));
+        assertThat(jsonPath.getList("store.book.collect{it.isbn?:it.title}"), contains("Sayings of the Century", "Sword of Honour", "0-553-21311-3", "0-395-19395-8"));
+        assertThat(jsonPath.getString("store.bicycle.price>10?p.v:no"), equalTo("V"));
+    }
+
+    @Test
     public void
     parses_json_document_with_attribute_name_equal_to_size() {
         // When
@@ -619,51 +780,138 @@ public class JsonPathTest {
     @Test public void
     automatically_escapes_json_attributes_whose_name_equals_properties() {
         // Given
-        String json = "{\n" +
-                "   \"features\":[\n" +
-                "      {\n" +
-                "         \"type\":\"Feature\",\n" +
-                "         \"geometry\":{\n" +
-                "            \"type\":\"GeometryCollection\",\n" +
-                "            \"geometries\":[\n" +
-                "               {\n" +
-                "                  \"type\":\"Point\",\n" +
-                "                  \"coordinates\":[\n" +
-                "                     19.883992823270653,\n" +
-                "                     50.02026203045478\n" +
-                "                  ]\n" +
-                "               }\n" +
-                "            ]\n" +
-                "         },\n" +
-                "         \"properties\":{\n" +
-                "            \"gridId\":6\n" +
-                "         }\n" +
-                "      },\n" +
-                "      {\n" +
-                "         \"type\":\"Feature\",\n" +
-                "         \"geometry\":{\n" +
-                "            \"type\":\"GeometryCollection\",\n" +
-                "            \"geometries\":[\n" +
-                "               {\n" +
-                "                  \"type\":\"Point\",\n" +
-                "                  \"coordinates\":[\n" +
-                "                     19.901266347582094,\n" +
-                "                     50.07074684071764\n" +
-                "                  ]\n" +
-                "               }\n" +
-                "            ]\n" +
-                "         },\n" +
-                "         \"properties\":{\n" +
-                "            \"gridId\":7\n" +
-                "         }\n" +
-                "      }\n" +
-                "   ]\n" +
-                "}";
+        String json = """
+                {
+                   "features":[
+                      {
+                         "type":"Feature",
+                         "geometry":{
+                            "type":"GeometryCollection",
+                            "geometries":[
+                               {
+                                  "type":"Point",
+                                  "coordinates":[
+                                     19.883992823270653,
+                                     50.02026203045478
+                                  ]
+                               }
+                            ]
+                         },
+                         "properties":{
+                            "gridId":6
+                         }
+                      },
+                      {
+                         "type":"Feature",
+                         "geometry":{
+                            "type":"GeometryCollection",
+                            "geometries":[
+                               {
+                                  "type":"Point",
+                                  "coordinates":[
+                                     19.901266347582094,
+                                     50.07074684071764
+                                  ]
+                               }
+                            ]
+                         },
+                         "properties":{
+                            "gridId":7
+                         }
+                      }
+                   ]
+                }""";
         // When
         JsonPath jsonPath = new JsonPath(json);
 
         // Then
         assertThat(jsonPath.getList("features.properties.gridId", Integer.class), hasItems(7));
+    }
+
+    @Test public void
+    spreads_properties_over_list_of_objects_even_when_the_first_element_lacks_the_properties_key() {
+        // Given a GeoJSON-style FeatureCollection whose FIRST feature has no "properties".
+        // GeoJSON permits an absent "properties" and does not guarantee feature order, so a leading
+        // feature without "properties" must not wipe the whole spread (issue #1875).
+        String json = """
+                {
+                   "features":[
+                      {
+                         "type":"Feature",
+                         "geometry":{
+                            "type":"Point",
+                            "coordinates":[19.883992823270653, 50.02026203045478]
+                         }
+                      },
+                      {
+                         "type":"Feature",
+                         "geometry":{
+                            "type":"Point",
+                            "coordinates":[19.901266347582094, 50.07074684071764]
+                         },
+                         "properties":{
+                            "gridId":6
+                         }
+                      },
+                      {
+                         "type":"Feature",
+                         "geometry":{
+                            "type":"Point",
+                            "coordinates":[19.912345678901234, 50.11223344556677]
+                         },
+                         "properties":{
+                            "gridId":7
+                         }
+                      }
+                   ]
+                }""";
+        // When
+        JsonPath jsonPath = new JsonPath(json);
+
+        // Then the spread yields the values of the features that do carry "properties" instead of null
+        assertThat(jsonPath.getList("features.properties.gridId", Integer.class), hasItems(6, 7));
+
+        // hasItems above only proves the surviving values are present; it cannot distinguish
+        // [null, 6, 7] from [6, 7]. Assert features.properties directly so the positional-null
+        // contract is pinned: the properties-less first feature must keep its slot as a leading
+        // null rather than being dropped, leaving a 3-element list of [null, {gridId=6}, {gridId=7}].
+        List<Map<String, Object>> propertiesByFeature = jsonPath.getList("features.properties");
+        assertThat(propertiesByFeature, hasSize(3));
+        assertThat(propertiesByFeature.get(0), is(nullValue()));
+        assertThat(propertiesByFeature.get(1), hasEntry("gridId", (Object) 6));
+        assertThat(propertiesByFeature.get(2), hasEntry("gridId", (Object) 7));
+    }
+
+    @Test public void
+    spreads_nested_properties_over_a_list_of_objects() {
+        // items.properties.x (single spread) and properties.properties.x (nested map) both work;
+        // the nested list form must too. The list "properties" spread result must stay a proxy list
+        // so the second "properties" hop navigates the JSON field, not Groovy meta-data (issue #1879).
+        String json = """
+                {
+                   "items":[
+                      { "properties": { "properties": { "gridId": 6 } } },
+                      { "properties": { "properties": { "gridId": 7 } } }
+                   ]
+                }""";
+        JsonPath jsonPath = new JsonPath(json);
+        assertThat(jsonPath.getList("items.properties.properties.gridId", Integer.class), contains(6, 7));
+    }
+
+    @Test public void
+    spreads_properties_over_a_list_of_objects_where_no_object_has_the_properties_key() {
+        String json = """
+                { "items": [ { "id": 1 }, { "id": 2 } ] }""";
+        JsonPath jsonPath = new JsonPath(json);
+        assertThat(jsonPath.getList("items.properties"), contains(nullValue(), nullValue()));
+    }
+
+    @Test public void
+    skips_null_elements_when_spreading_properties_over_a_list() {
+        String json = """
+                { "items": [ null, { "properties": { "properties": { "gridId": 6 } } } ] }""";
+        JsonPath jsonPath = new JsonPath(json);
+        assertThat(jsonPath.getList("items.properties.properties.gridId", Integer.class), contains(6));
     }
 
     @Test public void
@@ -802,5 +1050,163 @@ public class JsonPathTest {
 
         // Then   no exception should be thrown
         assertThat(jsonPath.getString("root.items[0]"), is(nullValue()));
+    }
+
+    /** Tests #1746 is fixed plus additional verifications to ensure we did not break existing behavior */
+    @Test public void
+    returns_null_for_absent_json_keys(){
+
+        // ------- Given
+        String json = "{\"root\": {" +
+                      "    \"nKey\": null," +
+                      "    \"iKey\": 1," +
+                      "    \"fKey\": 1.1," +
+                      "    \"sKey\": \"ss\"," +
+                      "    \"bKey\": true," +
+
+                      "    \"array\"  : [{" +
+                      "        \"nKey\": null," +
+                      "        \"iKey\": 1," +
+                      "        \"fKey\": 1.1," +
+                      "        \"sKey\": \"ss\"," +
+                      "        \"bKey\": true" +
+                      "        }]," +
+                      "    \"arrEmpty\"  : []" +
+                      "    }" +
+                      "}";
+        // ------ When
+        JsonPath jsonPath = JsonPath.from(json);
+
+        // ------ Then
+
+        // test pre-#1746 behavior for objects
+        assertThat(jsonPath.get("root.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.nKey.absentKey"), is(nullValue()));
+
+        // Test the #1746: change "IllegalArgumentException" to null when root.xKey has ifsb type in json
+        // ifsb == int/float/string/boolean
+        assertThat(jsonPath.get("root.iKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.fKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.sKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.bKey.absentKey"), is(nullValue()));
+
+        // Test the #1746, for items inside arrays:
+        // Note that we cannot return [] here because of library design to use Groovy for processing
+        // But 'null'  is better than pre-#1746 "IllegalArgumentException"
+        assertThat(jsonPath.get("root.array.iKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.array.fKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.array.sKey.absentKey"), is(nullValue()));
+        assertThat(jsonPath.get("root.array.bKey.absentKey"), is(nullValue()));
+
+        // test pre-#1746 behavior for arrays:
+        assertThat(jsonPath.get("root.array.absentKey"), allOf(hasSize(1), contains((Object)null)));  // [null]
+        assertThat(jsonPath.get("root.array.nKey.absentKey"), is(empty()));  // []
+        assertThat(jsonPath.get("root.arrEmpty.absentKey"), is(empty()));    // []
+
+    }
+
+
+    /** Test that fix #1746 did not break exception about parameters */
+    @Test public void
+    exception_should_be_thrown_for_undefined_script_parameters(){
+
+        // Given
+        JsonPath jsonPath = JsonPath.from("{}");
+
+        Exception actualException = null;
+        //When
+        try{
+            jsonPath/*.param("myParameter", "xx")*/.get("$==myParameter");
+        }catch (IllegalArgumentException e){actualException = e;}
+
+        //Then
+        assertThat(actualException, is(notNullValue()));
+        assertThat(actualException.getMessage(),
+                   equalTo("The parameter \"myParameter\" was used but not defined. Define parameters using the " +
+                           "JsonPath.param(...) function"));
+    }
+
+    @Test public void
+    does_not_fail_on_primitive_string() {
+        // When
+        String json = "\"foo\"";
+
+        // When
+        JsonPath jsonPath = JsonPath.from(json);
+
+        // Then
+        assertThat(jsonPath.get("$"), is("foo"));
+    }
+
+    @Test public void
+    does_not_fail_on_primitive_true() {
+        // When
+        String json = "true";
+
+        // When
+        JsonPath jsonPath = JsonPath.from(json);
+
+        // Then
+        assertThat(jsonPath.get("$"), is(true));
+    }
+
+    @Test public void
+    does_not_fail_on_primitive_false() {
+        // When
+        String json = "false";
+
+        // When
+        JsonPath jsonPath = JsonPath.from(json);
+
+        // Then
+        assertThat(jsonPath.get("$"), is(false));
+    }
+    @Test public void
+    does_not_fail_on_primitive_null() {
+        // When
+        String json = "null";
+
+        // When
+        JsonPath jsonPath = JsonPath.from(json);
+
+        // Then
+        assertThat(jsonPath.get("$"), nullValue());
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingNegativeIndex() {
+        JsonPath jsonPath = new JsonPath("{\"some-list\":[{\"x\":\"a\"},{\"x\":\"b\"},{\"x\":\"c\"}]}");
+
+        assertThat(jsonPath.getString("some-list[-1].x"), equalTo("c"));
+        assertThat(jsonPath.getString("some-list[-2].x"), equalTo("b"));
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingRangeFollowedByMorePath() {
+        JsonPath jsonPath = new JsonPath("{\"some-list\":[{\"x\":\"a\"},{\"x\":\"b\"},{\"x\":\"c\"}],\"list\":[{\"x\":\"a\"},{\"x\":\"b\"},{\"x\":\"c\"}]}");
+
+        assertThat(jsonPath.getList("some-list[-2..-1].x"), contains("b", "c"));
+        assertThat(jsonPath.getList("some-list[0..-1].x"), contains("a", "b", "c"));
+        assertThat(jsonPath.getList("some-list[0..1].x"), contains("a", "b"));
+        assertThat(jsonPath.getList("list[-2..-1].x"), contains("b", "c"));
+        assertThat(jsonPath.getList("list[0..-1].x"), contains("a", "b", "c"));
+        assertThat(jsonPath.getList("list[0..1].x"), contains("a", "b"));
+    }
+
+    @Test
+    public void supportsRangeOnRootArrayFollowedByMorePath() {
+        JsonPath jsonPath = new JsonPath("[{\"x\":\"a\",\"some-key\":1},{\"x\":\"b\",\"some-key\":2},{\"x\":\"c\",\"some-key\":3}]");
+
+        assertThat(jsonPath.getList("[0..1].x"), contains("a", "b"));
+        assertThat(jsonPath.getList("[-2..-1].x"), contains("b", "c"));
+        assertThat(jsonPath.getList("[0..<2].some-key"), contains(1, 2));
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingChainedIndexes() {
+        JsonPath jsonPath = new JsonPath("{\"some-list\":[[{\"x\":\"a\"},{\"x\":\"b\"}],[{\"x\":\"c\"}]]}");
+
+        assertThat(jsonPath.getString("some-list[0][1].x"), equalTo("b"));
+        assertThat(jsonPath.getList("some-list[0..-1][0].x"), contains("a", "b"));
     }
 }

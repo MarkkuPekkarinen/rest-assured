@@ -17,6 +17,7 @@
 package io.restassured.filter.log;
 
 import io.restassured.builder.ResponseBuilder;
+import io.restassured.config.RestAssuredConfig;
 import io.restassured.filter.Filter;
 import io.restassured.filter.FilterContext;
 import io.restassured.internal.RestAssuredResponseImpl;
@@ -131,7 +132,10 @@ class StatusCodeBasedLoggingFilter implements Filter {
      */
     private Response cloneResponseIfNeeded(Response response, byte[] responseAsString) {
         if (responseAsString != null && response instanceof RestAssuredResponseImpl && !((RestAssuredResponseImpl) response).getHasExpectations()) {
-            final Response build = new ResponseBuilder().clone(response).setBody(responseAsString).build();
+            final Response build = new ResponseBuilder()
+                .clone(response)
+                .setBody(responseAsString)
+                .build();
             ((RestAssuredResponseImpl) build).setHasExpectations(true);
             return build;
         }
@@ -139,7 +143,8 @@ class StatusCodeBasedLoggingFilter implements Filter {
     }
 
     private static boolean isPrettyPrintingEnabled() {
-        return config == null || config.getLogConfig().isPrettyPrintingEnabled();
+        RestAssuredConfig currentConfig = config;
+        return currentConfig == null || currentConfig.getLogConfig().isPrettyPrintingEnabled();
     }
 
     private void throwIAE(LogDetail params) {

@@ -16,13 +16,14 @@
 
 package io.restassured.module.webtestclient;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import io.restassured.config.LogConfig;
 import io.restassured.module.webtestclient.setup.PutController;
 import io.restassured.module.webtestclient.setup.support.Greeting;
 import org.apache.commons.io.output.WriterOutputStream;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
@@ -38,12 +39,12 @@ import static org.hamcrest.Matchers.equalTo;
 
 public class PutTest {
 
-  @BeforeClass
+  @BeforeAll
 	public static void configureWebTestClientInstance() {
 		RestAssuredWebTestClient.webTestClient(WebTestClient.bindToController(new PutController()).build());
 	}
 
-	@AfterClass
+	@AfterAll
 	public static void restRestAssured() {
 		RestAssuredWebTestClient.reset();
 	}
@@ -63,7 +64,8 @@ public class PutTest {
 				.log().all()
 				.statusCode(415);
 
-		assertThat(writer.toString(), equalTo(String.format("415: Unsupported Media Type%n")));
+		assertThat(writer.toString(), equalTo(String.format("415: Unsupported Media Type%n" +
+				"Accept: application/x-www-form-urlencoded%n")));
 	}
 
 	@Test
@@ -120,5 +122,20 @@ public class PutTest {
 				.statusCode(200)
 				.log().all();
 		file.delete();
+	}
+
+	@Test
+	public void
+	can_use_multipart_with_unnamed_value_object_path_param() {
+		RestAssuredWebTestClient.given()
+				.multiPart("file", "file.txt", "Test".getBytes())
+				.when()
+				.put("/multipartFileUpload/{type}", new Type("text"))
+				.then()
+				.statusCode(200)
+				.body(equalTo("text"));
+	}
+
+	public record Type(@JsonValue String value) {
 	}
 }

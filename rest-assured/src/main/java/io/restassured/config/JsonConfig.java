@@ -16,6 +16,7 @@
 
 package io.restassured.config;
 
+import io.restassured.common.config.NumberReturnType;
 import io.restassured.path.json.config.JsonPathConfig;
 import org.apache.commons.lang3.Validate;
 
@@ -23,23 +24,51 @@ import org.apache.commons.lang3.Validate;
  * Allows you to configure properties of JSON parsing.
  */
 public class JsonConfig implements Config {
+
+    /**
+     * The default maximum length (in characters) of a JSON number token, the same as Jackson's
+     * {@code StreamReadConstraints} default.
+     */
+    public static final int DEFAULT_NUMBER_LENGTH_LIMIT = 1000;
     private final JsonPathConfig.NumberReturnType numberReturnType;
+    private final int numberLengthLimit;
     private final boolean isUserDefined;
 
     /**
-     * Create a new instance of XmlConfig without any features and that is namespace unaware.
+     * Create a new instance of JsonConfig with the default settings.
      */
     public JsonConfig() {
-        this(JsonPathConfig.NumberReturnType.FLOAT_AND_DOUBLE, false);
+        this(JsonPathConfig.NumberReturnType.FLOAT_AND_DOUBLE, DEFAULT_NUMBER_LENGTH_LIMIT, false);
     }
 
+    public JsonConfig(NumberReturnType numberReturnType) {
+        this(toLegacy(numberReturnType), DEFAULT_NUMBER_LENGTH_LIMIT, true);
+    }
+
+    public JsonConfig(NumberReturnType numberReturnType, boolean isUserDefined) {
+        this(toLegacy(numberReturnType), DEFAULT_NUMBER_LENGTH_LIMIT, isUserDefined);
+    }
+
+    /**
+     * @deprecated Use {@link #JsonConfig(NumberReturnType)} instead. This enum is removed in REST Assured 8.0.0.
+     */
+    @Deprecated
     public JsonConfig(JsonPathConfig.NumberReturnType numberReturnType) {
-        this(numberReturnType, true);
+        this(numberReturnType, DEFAULT_NUMBER_LENGTH_LIMIT, true);
     }
 
+    /**
+     * @deprecated Use {@link #JsonConfig(NumberReturnType, boolean)} instead. This enum is removed in REST Assured 8.0.0.
+     */
+    @Deprecated
     public JsonConfig(JsonPathConfig.NumberReturnType numberReturnType, boolean isUserDefined) {
+        this(numberReturnType, DEFAULT_NUMBER_LENGTH_LIMIT, isUserDefined);
+    }
+
+    private JsonConfig(JsonPathConfig.NumberReturnType numberReturnType, int numberLengthLimit, boolean isUserDefined) {
         Validate.notNull(numberReturnType, "numberReturnType cannot be null");
         this.numberReturnType = numberReturnType;
+        this.numberLengthLimit = numberLengthLimit;
         this.isUserDefined = isUserDefined;
     }
 
@@ -52,13 +81,49 @@ public class JsonConfig implements Config {
     }
 
     /**
+     * @return The maximum allowed length (in characters) of a JSON number token, or a negative value if unlimited.
+     */
+    public int numberLengthLimit() {
+        return numberLengthLimit;
+    }
+
+    /**
      * Specifies if JSON parsing should use floats and doubles or BigDecimals to represent Json numbers.
      *
      * @param numberReturnType The choice.
      * @return A new instance of JsonConfig with the given configuration
      */
+    public JsonConfig numberReturnType(NumberReturnType numberReturnType) {
+        return new JsonConfig(toLegacy(numberReturnType), numberLengthLimit, true);
+    }
+
+    /**
+     * Specifies if JSON parsing should use floats and doubles or BigDecimals to represent Json numbers.
+     *
+     * @param numberReturnType The choice.
+     * @return A new instance of JsonConfig with the given configuration
+     * @deprecated Use {@link #numberReturnType(NumberReturnType)} instead. This enum is removed in REST Assured 8.0.0.
+     */
+    @Deprecated
     public JsonConfig numberReturnType(JsonPathConfig.NumberReturnType numberReturnType) {
-        return new JsonConfig(numberReturnType, true);
+        return new JsonConfig(numberReturnType, numberLengthLimit, true);
+    }
+
+    private static JsonPathConfig.NumberReturnType toLegacy(NumberReturnType numberReturnType) {
+        return numberReturnType == null ? null : JsonPathConfig.NumberReturnType.valueOf(numberReturnType.name());
+    }
+
+    /**
+     * Specifies the maximum allowed length (in characters) of a JSON number token. Number tokens longer than this
+     * are rejected before being converted to a number, guarding against CPU/heap exhaustion when constructing
+     * arbitrarily large numbers (such as {@link java.math.BigInteger}) from untrusted JSON. A value of {@code 0}
+     * rejects every number, and a negative value disables the check. Defaults to {@link #DEFAULT_NUMBER_LENGTH_LIMIT}.
+     *
+     * @param numberLengthLimit The maximum number token length, {@code 0} to reject all numbers, or a negative value to disable the check.
+     * @return A new instance of JsonConfig with the given configuration
+     */
+    public JsonConfig numberLengthLimit(int numberLengthLimit) {
+        return new JsonConfig(numberReturnType, numberLengthLimit, true);
     }
 
     /**

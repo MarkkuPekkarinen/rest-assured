@@ -24,6 +24,7 @@ import io.restassured.http.Cookies;
 import io.restassured.http.Header;
 import io.restassured.http.Headers;
 import io.restassured.http.Method;
+import io.restassured.internal.NoParameterValue;
 import io.restassured.internal.RequestSpecificationImpl;
 import io.restassured.internal.ResponseParserRegistrar;
 import io.restassured.internal.ResponseSpecificationImpl;
@@ -34,13 +35,14 @@ import io.restassured.internal.support.PathSupport;
 import io.restassured.internal.util.SafeExceptionRethrower;
 import io.restassured.module.spring.commons.HeaderHelper;
 import io.restassured.module.spring.commons.ParamApplier;
+import io.restassured.module.spring.commons.Serializer;
 import io.restassured.module.spring.commons.config.ConfigConverter;
 import io.restassured.module.webtestclient.config.RestAssuredWebTestClientConfig;
 import io.restassured.module.webtestclient.response.WebTestClientResponse;
 import io.restassured.module.webtestclient.specification.WebTestClientRequestSender;
 import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
-import org.apache.commons.codec.Charsets;
+import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.client.MultipartBodyBuilder;
@@ -50,14 +52,16 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.UriBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
-import org.springframework.web.util.UriUtils;
 
 import java.io.File;
 import java.net.URI;
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
@@ -75,9 +79,14 @@ import static org.springframework.http.MediaType.parseMediaType;
 public class WebTestClientRequestSenderImpl implements WebTestClientRequestSender {
 
 	private static final String CONTENT_TYPE = "Content-Type";
+	private static final Pattern PATH_PARAM_PATTERN = Pattern.compile("\\{([^/]+?)\\}");
+	private static final String QUERY_PARAM_URI_VARIABLE_PREFIX = "restAssuredQueryParam";
+
+    private static boolean isWebflux7OrAbove = Arrays.stream(WebTestClient.RequestBodySpec.class.getMethods()).anyMatch(method -> method.getName().equals(""));
 
 	private final WebTestClient webTestClient;
 	private final Map<String, Object> params;
+	private final Map<String, Object> namedPathParams;
 	private final Map<String, Object> queryParams;
 	private final Map<String, Object> formParams;
 	private final Map<String, Object> attributes;
@@ -128,6 +137,11 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	}
 
 	@Override
+	public WebTestClientResponse query(Function<UriBuilder, URI> uriFunction) {
+		return sendRequest(queryHttpMethod(), uriFunction);
+	}
+
+	@Override
 	public WebTestClientResponse request(Method method, Function<UriBuilder, URI> uriFunction) {
 		return request(notNull(method, Method.class).name(), uriFunction);
 	}
@@ -139,11 +153,19 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 
 	private HttpMethod toValidHttpMethod(String method) {
 		String httpMethodAsString = notNull(trimToNull(method), "HTTP Method");
-		HttpMethod httpMethod = HttpMethod.resolve(httpMethodAsString.toUpperCase());
-		if (httpMethod == null) {
-			throw new IllegalArgumentException("HTTP method '" + method + "' is not supported by WebTestClient");
+		try {
+			// As of Spring Framework 7, HttpMethod.valueOf no longer restricts its input to the set of
+			// known HTTP methods (it accepts and creates a custom HttpMethod for any string). WebTestClient
+			// only supports the methods defined by org.springframework.web.bind.annotation.RequestMethod (and QUERY), so
+			// validate against that enum to preserve the original "unsupported HTTP verb" behavior.
+			if (io.restassured.http.Method.QUERY.name().equalsIgnoreCase(httpMethodAsString)) {
+				return queryHttpMethod();
+			}
+			org.springframework.web.bind.annotation.RequestMethod.valueOf(httpMethodAsString.toUpperCase(Locale.ROOT));
+			return HttpMethod.valueOf(httpMethodAsString.toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException(String.format("HTTP method '%s' is not supported by WebTestClient", method));
 		}
-		return httpMethod;
 	}
 
 	@Override
@@ -151,15 +173,26 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		return sendRequest(GET, path, pathParams);
 	}
 
-	public WebTestClientRequestSenderImpl(WebTestClient webTestClient, Map<String, Object> params, Map<String,
-			Object> queryParams, Map<String, Object> formParams, Map<String, Object> attributes,
-										  RestAssuredWebTestClientConfig config, Object requestBody, Headers headers,
-										  Cookies cookies, List<MultiPartInternal> multiParts,
-										  RequestLoggingFilter requestLoggingFilter, String basePath,
-										  ResponseSpecification responseSpecification,
-										  LogRepository logRepository) {
+	public WebTestClientRequestSenderImpl(
+			WebTestClient webTestClient,
+			Map<String, Object> params,
+			Map<String,Object> namedPathParams,
+			Map<String,Object> queryParams,
+			Map<String, Object> formParams,
+			Map<String, Object> attributes,
+			RestAssuredWebTestClientConfig config,
+			Object requestBody,
+			Headers headers,
+			Cookies cookies,
+			List<MultiPartInternal> multiParts,
+			RequestLoggingFilter requestLoggingFilter,
+			String basePath,
+			ResponseSpecification responseSpecification,
+			LogRepository logRepository
+	) {
 		this.webTestClient = webTestClient;
 		this.params = params;
+		this.namedPathParams = namedPathParams;
 		this.queryParams = queryParams;
 		this.formParams = formParams;
 		this.attributes = attributes;
@@ -246,6 +279,16 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	}
 
 	@Override
+	public WebTestClientResponse query(String path, Object... pathParams) {
+		return sendRequest(queryHttpMethod(), path, pathParams);
+	}
+
+	@Override
+	public WebTestClientResponse query(String path, Map<String, ?> pathParams) {
+		return query(path, mapToArray(pathParams));
+	}
+
+	@Override
 	public WebTestClientResponse get(URI uri) {
 		return get(uri.toString());
 	}
@@ -278,6 +321,11 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	@Override
 	public WebTestClientResponse options(URI uri) {
 		return options(uri.toString());
+	}
+
+	@Override
+	public WebTestClientResponse query(URI uri) {
+		return query(uri.toString());
 	}
 
 	@Override
@@ -316,6 +364,11 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	}
 
 	@Override
+	public WebTestClientResponse query(URL url) {
+		return query(url.toString());
+	}
+
+	@Override
 	public WebTestClientResponse get() {
 		return get("");
 	}
@@ -348,6 +401,11 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	@Override
 	public WebTestClientResponse options() {
 		return options("");
+	}
+
+	@Override
+	public WebTestClientResponse query() {
+		return query("");
 	}
 
 	@Override
@@ -390,20 +448,24 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		return request(method, notNull(url, URL.class).toString());
 	}
 
-	private WebTestClientResponse sendRequest(HttpMethod method, String path, Object[] pathParams) {
+	private WebTestClientResponse sendRequest(HttpMethod method, String path, Object[] unnamedPathParams) {
 		String requestContentType = HeaderHelper.findContentType(headers, (List<Object>) (List<?>) multiParts, config);
-		WebTestClient.RequestBodySpec requestBodySpec = buildFromPath(method, requestContentType, path, pathParams);
+		WebTestClient.RequestBodySpec requestBodySpec = buildFromPath(method, requestContentType, path, unnamedPathParams);
 		addRequestElements(method, requestContentType, requestBodySpec);
-		logRequestIfApplicable(method, getBaseUri(path), path, pathParams);
+		logRequestIfApplicable(method, getBaseUri(path), path, unnamedPathParams);
 		return performRequest(requestBodySpec);
 	}
 
-	private WebTestClient.RequestBodySpec buildFromPath(HttpMethod method, String requestContentType, String path,
-														Object[] pathParams) {
+	private WebTestClient.RequestBodySpec buildFromPath(
+			HttpMethod method,
+			String requestContentType,
+			String path,
+			Object[] unnamedPathParams
+	) {
 		notNull(path, "Path");
 		String baseUri = getBaseUri(path);
-		String uri = buildUri(method, requestContentType, baseUri);
-		return webTestClient.method(method).uri(uri, resolvePathParams(pathParams));
+		final UriContainer uriContainer = buildUri(method, requestContentType, baseUri, unnamedPathParams);
+		return webTestClient.method(method).uri(uriContainer.getUri(), uriContainer.getUriVariables());
 	}
 
 	private void addRequestElements(HttpMethod method, String requestContentType, WebTestClient.RequestBodySpec requestBodySpec) {
@@ -425,7 +487,7 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		final RequestSpecificationImpl reqSpec = new RequestSpecificationImpl("http://localhost",
 				RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.emptyList(),
 				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
-		logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, queryParams, formParams, headers, cookies);
+		logParamsAndHeaders(reqSpec, method.toString(), uri, unnamedPathParams, params, namedPathParams, queryParams, formParams, headers, cookies);
 		logRequestBody(reqSpec, requestBody, headers, (List<Object>) (List<?>) multiParts, config);
 		ofNullable(multiParts).map(List::stream).orElseGet(Stream::empty)
 				.forEach(multiPart -> addMultipartToReqSpec(reqSpec, multiPart));
@@ -465,21 +527,49 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		return restAssuredResponse;
 	}
 
-	private String buildUri(HttpMethod method, String requestContentType, String baseUri) {
+	private UriContainer buildUri(HttpMethod method, String requestContentType, String baseUri, Object[] unnamedPathParams) {
 		final UriComponentsBuilder uriComponentsBuilder = UriComponentsBuilder.fromUriString(baseUri);
-		applyQueryParams(uriComponentsBuilder);
-		applyParams(method, uriComponentsBuilder, requestContentType);
-		applyFormParams(method, uriComponentsBuilder, requestContentType);
-		return uriComponentsBuilder.build().toUriString();
+		final Map<String, Object> uriVariables = new HashMap<>();
+
+		// Path params are resolved first so that the generated query parameter variable names never clash with them
+		applyPathParams(uriVariables, baseUri, unnamedPathParams, headers.getValue(CONTENT_TYPE));
+		addQueryParamsAsUriVariables(queryParams, uriComponentsBuilder, uriVariables);
+		applyParams(method, uriComponentsBuilder, uriVariables, requestContentType);
+		applyFormParams(method, uriComponentsBuilder, uriVariables, requestContentType);
+
+		final String uriTemplate = uriComponentsBuilder.build(false).toUriString();
+
+		return UriContainer.newBuilder(uriTemplate).uriVariables(uriVariables).build();
 	}
 
-	private Object[] resolvePathParams(Object[] pathParams) {
-		Arrays.stream(pathParams).filter(param -> !(param instanceof String))
-				.findAny().ifPresent(param -> {
-			throw new IllegalArgumentException("Only Strings allowed in path parameters.");
+	/**
+	 * Adds the parameters to the query of the URI template as URI variables, so that WebTestClient strictly encodes
+	 * their names and values (template encoding would leave reserved characters such as "+", "&" and "=" as-is
+	 * and treat "{...}" as a URI variable).
+	 */
+	private static void addQueryParamsAsUriVariables(Map<String, Object> parameters, UriComponentsBuilder uriComponentsBuilder,
+													 Map<String, Object> uriVariables) {
+		parameters.forEach((name, value) -> {
+			final String nameVariable = addUriVariable(uriVariables, name);
+			final Collection<?> values = value instanceof Collection ? (Collection<?>) value : Collections.singletonList(value);
+			for (Object paramValue : values) {
+				if (paramValue == null || paramValue instanceof NoParameterValue) {
+					uriComponentsBuilder.queryParam(nameVariable);
+				} else {
+					uriComponentsBuilder.queryParam(nameVariable, addUriVariable(uriVariables, paramValue.toString()));
+				}
+			}
 		});
-		return Arrays.stream(pathParams)
-				.map(param -> UriUtils.encode((String) param, Charsets.UTF_8)).toArray();
+	}
+
+	private static String addUriVariable(Map<String, Object> uriVariables, String value) {
+		int index = uriVariables.size();
+		String variableName;
+		do {
+			variableName = QUERY_PARAM_URI_VARIABLE_PREFIX + index++;
+		} while (uriVariables.containsKey(variableName));
+		uriVariables.put(variableName, value);
+		return "{" + variableName + "}";
 	}
 
 	private void verifyNoBodyAndMultipartTogether() {
@@ -492,12 +582,12 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 	private void applyRequestBody(WebTestClient.RequestBodySpec requestBodySpec) {
 		if (requestBody != null) {
 			if (requestBody instanceof byte[]) {
-				requestBodySpec.syncBody(requestBody);
+				requestBodySpec.bodyValue(requestBody);
 			} else if (requestBody instanceof File) {
 				byte[] bytes = toByteArray((File) requestBody);
-				requestBodySpec.syncBody(bytes);
+				requestBodySpec.bodyValue(bytes);
 			} else {
-				requestBodySpec.syncBody(requestBody.toString());
+				requestBodySpec.bodyValue(requestBody.toString());
 			}
 		}
 	}
@@ -507,7 +597,7 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 			if (method != POST && method != PUT && method != PATCH) {
 				throw new IllegalArgumentException("Currently multi-part file data uploading only works for POST, PUT and PATCH method.");
 			}
-			requestBodySpec.syncBody(getMultipartBody());
+			requestBodySpec.bodyValue(getMultipartBody());
 		}
 	}
 
@@ -530,25 +620,48 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 						build());
 	}
 
-	private void applyQueryParams(UriComponentsBuilder uriComponentsBuilder) {
-		if (!queryParams.isEmpty()) {
-			new ParamApplier(queryParams) {
-				@Override
-				protected void applyParam(String paramName, String[] paramValues) {
-					uriComponentsBuilder.queryParam(paramName, paramValues);
-				}
-			}.applyParams();
+	private void applyPathParams(
+			final Map<String, Object> uriVariables,
+			final String baseUri,
+			final Object[] unnamedPathParams,
+			// The explicitly set content type (like named path params), read before applyParams/applyFormParams can change it
+			final String pathParamContentType
+	) {
+		final Matcher pathParamMatcher = PATH_PARAM_PATTERN.matcher(baseUri);
+		if (!pathParamMatcher.find()) {
+			return;
 		}
+
+		if (namedPathParams.isEmpty() && ArrayUtils.isEmpty(unnamedPathParams)) {
+			throw new IllegalArgumentException("No values were found for the request's pathParams.");
+		}
+
+		final AtomicInteger nextUnnamedPathParamIndex = new AtomicInteger(0);
+		final Function<String, Optional<Object>> getPathParamValueFunction = param -> {
+			if (namedPathParams.containsKey(param)) {
+				return Optional.of(namedPathParams.get(param));
+			}
+
+			if (unnamedPathParams.length > 0) {
+				Object unnamedPathParam = unnamedPathParams[nextUnnamedPathParamIndex.getAndIncrement()];
+				return Optional.of(Serializer.serializeParameterIfNeeded(unnamedPathParam, pathParamContentType, config));
+			}
+
+			return Optional.empty();
+		};
+
+		do {
+			final String paramName = pathParamMatcher.group(1);
+			getPathParamValueFunction.apply(paramName).ifPresent(paramValue ->
+					uriVariables.put(paramName, paramValue)
+			);
+		} while (pathParamMatcher.find());
 	}
 
-	private void applyParams(HttpMethod method, UriComponentsBuilder uriComponentsBuilder, String requestContentType) {
+	private void applyParams(HttpMethod method, UriComponentsBuilder uriComponentsBuilder, Map<String, Object> uriVariables,
+							 String requestContentType) {
 		if (!params.isEmpty()) {
-			new ParamApplier(params) {
-				@Override
-				protected void applyParam(String paramName, String[] paramValues) {
-					uriComponentsBuilder.queryParam(paramName, paramValues);
-				}
-			}.applyParams();
+			addQueryParamsAsUriVariables(params, uriComponentsBuilder, uriVariables);
 
 			if (isBlank(requestContentType) && method == POST && !isMultipartRequest()) {
 				setContentTypeToApplicationFormUrlEncoded();
@@ -556,17 +669,13 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 		}
 	}
 
-	private void applyFormParams(HttpMethod method, UriComponentsBuilder uriComponentsBuilder, String requestContentType) {
+	private void applyFormParams(HttpMethod method, UriComponentsBuilder uriComponentsBuilder, Map<String, Object> uriVariables,
+								 String requestContentType) {
 		if (!formParams.isEmpty()) {
 			if (method == GET) {
 				throw new IllegalArgumentException("Cannot use form parameters in a GET request");
 			}
-			new ParamApplier(formParams) {
-				@Override
-				protected void applyParam(String paramName, String[] paramValues) {
-					uriComponentsBuilder.queryParam(paramName, paramValues);
-				}
-			}.applyParams();
+			addQueryParamsAsUriVariables(formParams, uriComponentsBuilder, uriVariables);
 			if (isBlank(requestContentType) && !isMultipartRequest()) {
 				setContentTypeToApplicationFormUrlEncoded();
 			}
@@ -611,7 +720,7 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 				RestAssured.UNDEFINED_PORT, "", new NoAuthScheme(), Collections.emptyList(),
 				null, true, ConfigConverter.convertToRestAssuredConfig(config), logRepository, null, true, true);
 		logParamsAndHeaders(reqSpec, method.toString(), "Request from uri function" + uriFunction.toString(),
-				null, params, queryParams, formParams,
+				null, params, namedPathParams, queryParams, formParams,
 				headers, cookies);
 		logRequestBody(reqSpec, requestBody, headers, (List<Object>) (List<?>) multiParts, config);
 		ofNullable(multiParts).map(List::stream).orElseGet(Stream::empty)
@@ -627,5 +736,15 @@ public class WebTestClientRequestSenderImpl implements WebTestClientRequestSende
 			return ((ResponseSpecificationImpl) responseSpecification).getRpr();
 		}
 		return new ResponseParserRegistrar();
+	}
+
+	// Spring Framework 6 and 7 have no HttpMethod.QUERY constant, but HttpMethod.valueOf accepts any method name.
+	// In Spring 5 HttpMethod is an enum without QUERY, so resolve it lazily to keep the other methods working there.
+	private static HttpMethod queryHttpMethod() {
+		try {
+			return HttpMethod.valueOf(io.restassured.http.Method.QUERY.name());
+		} catch (IllegalArgumentException e) {
+			throw new UnsupportedOperationException("The HTTP QUERY method requires Spring Framework 6 or later", e);
+		}
 	}
 }

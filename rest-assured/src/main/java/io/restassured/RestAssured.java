@@ -26,6 +26,7 @@ import io.restassured.config.SessionConfig;
 import io.restassured.filter.Filter;
 import io.restassured.filter.log.LogDetail;
 import io.restassured.http.Method;
+import io.restassured.internal.support.CommonVersionCheck;
 import io.restassured.internal.*;
 import io.restassured.internal.common.assertion.AssertParameter;
 import io.restassured.internal.log.LogRepository;
@@ -43,17 +44,19 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.KeyStore;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static io.restassured.specification.ProxySpecification.host;
 
 /**
  * REST Assured is a Java DSL for simplifying testing of REST based services built on top of
  * <a href="https://github.com/jgritman/httpbuilder">HTTP Builder</a>.
- * It supports POST, GET, PUT, DELETE, HEAD, PATCH  and OPTIONS
+ * It supports POST, GET, PUT, DELETE, HEAD, PATCH, OPTIONS and QUERY
  * requests and to verify the response of these requests. Usage examples:
  * <ol>
  * <li>
@@ -157,7 +160,7 @@ import static io.restassured.specification.ProxySpecification.host;
  * <li>
  * Body:
  * <pre>
- * given().request().body("some body"). .. // Works for POST and PUT requests
+ * given().request().body("some body"). .. // E.g. for POST, PUT, PATCH and QUERY requests
  * given().request().body(new byte[]{42}). .. // Works for POST
  * </pre>
  * </li>
@@ -332,6 +335,22 @@ import static io.restassured.specification.ProxySpecification.host;
  * </pre>
  * </li>
  * </ol>
+ * <h2>Thread safety</h2>
+ * <p>
+ * The static fields and methods of this class (such as {@link #baseURI}, {@link #port}, {@link #config},
+ * {@link #filters(java.util.List)} and {@link #registerParser(String, Parser)}) are global defaults shared by all threads.
+ * When tests run in parallel:
+ * <ul>
+ * <li>Set the static defaults once, before the tests start running in parallel (for example in a <code>@BeforeAll</code>
+ * method), and don't change them while requests are being made. Calling {@link #given()} from many threads at once
+ * is safe, and each call takes a copy of the defaults.</li>
+ * <li>Put values that differ between tests in the request specification instead, for example
+ * <code>given().baseUri("http://localhost").port(8081)</code> or <code>given(spec)</code> with a specification made by a
+ * {@link RequestSpecBuilder}.</li>
+ * <li>Don't execute the same request specification from several threads at once; start a new one with
+ * {@link #given()} in each thread.</li>
+ * <li>Filters added with {@link #filters(java.util.List)} are shared by all requests and must be thread safe.</li>
+ * </ul>
  * <p>
  * In order to use REST assured effectively it's recommended to statically import
  * methods from the following classes:
@@ -344,8 +363,17 @@ import static io.restassured.specification.ProxySpecification.host;
  */
 public class RestAssured {
 
+    static {
+        // First, so that an older rest-assured-common gives a message instead of a NoClassDefFoundError
+        CommonVersionCheck.verify();
+    }
+
     private static final String SSL = "SSL";
-    private static ResponseParserRegistrar RESPONSE_PARSER_REGISTRAR = new ResponseParserRegistrar();
+    // Guards changes to the default filters and RESPONSE_PARSER_REGISTRAR. Both are copy-on-write, so given() can copy
+    // them from any thread without taking this lock.
+    private static final Object DEFAULTS_LOCK = new Object();
+    // Never modified after it's assigned (registerParser assigns a modified copy). ResponseSpecBuilder reads it reflectively.
+    private static volatile ResponseParserRegistrar RESPONSE_PARSER_REGISTRAR = new ResponseParserRegistrar();
 
     public static final String DEFAULT_URI = "http://localhost";
     public static final String DEFAULT_BODY_ROOT_PATH = "";
@@ -360,13 +388,13 @@ public class RestAssured {
      * The base URI that's used by REST assured when making requests if a non-fully qualified URI is used in the request.
      * Default value is {@value #DEFAULT_URI}.
      */
-    public static String baseURI = DEFAULT_URI;
+    public static volatile String baseURI = DEFAULT_URI;
 
     /**
      * The port that's used by REST assured when it's left out of the specified URI when making a request.
      * Default port will evaluate to {@value #DEFAULT_PORT}.
      */
-    public static int port = UNDEFINED_PORT;
+    public static volatile int port = UNDEFINED_PORT;
 
     /**
      * A base path that's added to the {@link #baseURI} by REST assured when making requests. E.g. let's say that
@@ -380,7 +408,7 @@ public class RestAssured {
      * will make a request to <code>http://localhost/resource</code>.
      * Default <code>basePath</code> value is empty.
      */
-    public static String basePath = DEFAULT_PATH;
+    public static volatile String basePath = DEFAULT_PATH;
 
     /**
      * Specifies if Rest Assured should url encode the URL automatically. Usually this is a recommended but in some cases
@@ -396,7 +424,7 @@ public class RestAssured {
      * </pre>
      * The <code>query</code> is already url encoded so you need to disable Rest Assureds url encoding to prevent double encoding.
      */
-    public static boolean urlEncodingEnabled = DEFAULT_URL_ENCODING_ENABLED;
+    public static volatile boolean urlEncodingEnabled = DEFAULT_URL_ENCODING_ENABLED;
 
     /**
      * Set an authentication scheme that should be used for each request. By default no authentication is used.
@@ -407,7 +435,7 @@ public class RestAssured {
      *     given().auth().none()..
      * </pre>
      */
-    public static AuthenticationScheme authentication = DEFAULT_AUTH;
+    public static volatile AuthenticationScheme authentication = DEFAULT_AUTH;
 
     /**
      * Define a configuration for e.g. redirection settings and http client parameters (default is <code>new RestAssuredConfig()</code>). E.g.
@@ -419,7 +447,7 @@ public class RestAssured {
      * <p/>
      * </pre>
      */
-    public static RestAssuredConfig config = new RestAssuredConfig();
+    public static volatile RestAssuredConfig config = new RestAssuredConfig();
 
     /**
      * Set the default root path of the response body so that you don't need to write the entire path for each expectation.
@@ -443,7 +471,7 @@ public class RestAssured {
      *          body("gender", is(..)).
      * </pre>
      */
-    public static String rootPath = DEFAULT_BODY_ROOT_PATH;
+    public static volatile String rootPath = DEFAULT_BODY_ROOT_PATH;
 
     /**
      * Specify a default request specification that will be sent with each request. E,g.
@@ -453,14 +481,14 @@ public class RestAssured {
      * <p/>
      * means that for each request by Rest Assured "parameter1" will be equal to "value1".
      */
-    public static RequestSpecification requestSpecification = null;
+    public static volatile RequestSpecification requestSpecification = null;
 
     /**
      * Specify a default parser. This parser will be used if the response content-type
      * doesn't match any pre-registered or custom registered parsers. Also useful if the response
      * doesn't contain a content-type at all.
      */
-    public static Parser defaultParser = null;
+    public static volatile Parser defaultParser = null;
 
     /**
      * Specify a default response specification that will be sent with each request. E,g.
@@ -470,14 +498,14 @@ public class RestAssured {
      * <p/>
      * means that for each response Rest Assured will assert that the status code is equal to 200.
      */
-    public static ResponseSpecification responseSpecification = null;
+    public static volatile ResponseSpecification responseSpecification = null;
 
     /**
      * Set the default session id value that'll be used for each request. This value will be set in the {@link SessionConfig} so it'll
      * override the session id value previously defined there (if any). If you need to change the sessionId cookie name you need to configure and supply the {@link SessionConfig} to
      * <code>RestAssured.config</code>.
      */
-    public static String sessionId = DEFAULT_SESSION_ID_VALUE;
+    public static volatile String sessionId = DEFAULT_SESSION_ID_VALUE;
 
     /**
      * Specify a default proxy that REST Assured will use for all requests (unless overridden by individual tests). For example:
@@ -493,9 +521,9 @@ public class RestAssured {
      * @see #proxy(java.net.URI)
      * @see #proxy(ProxySpecification)
      */
-    public static ProxySpecification proxy = null;
+    public static volatile ProxySpecification proxy = null;
 
-    private static List<Filter> filters = new LinkedList<Filter>();
+    private static volatile List<Filter> filters = new CopyOnWriteArrayList<>();
 
 
     /**
@@ -505,7 +533,9 @@ public class RestAssured {
      */
     public static void filters(List<Filter> filters) {
         Validate.notNull(filters, "Filter list cannot be null");
-        RestAssured.filters.addAll(filters);
+        synchronized (DEFAULTS_LOCK) {
+            RestAssured.filters.addAll(filters);
+        }
     }
 
     /**
@@ -516,10 +546,7 @@ public class RestAssured {
      */
     public static void filters(Filter filter, Filter... additionalFilters) {
         Validate.notNull(filter, "Filter cannot be null");
-        RestAssured.filters.add(filter);
-        if (additionalFilters != null) {
-            Collections.addAll(RestAssured.filters, additionalFilters);
-        }
+        filters(asFilterList(filter, additionalFilters));
     }
 
     /**
@@ -529,8 +556,10 @@ public class RestAssured {
      */
     public static void replaceFiltersWith(List<Filter> filters) {
         Validate.notNull(filters, "Filter list cannot be null");
-        RestAssured.filters.clear();
-        filters(filters);
+        synchronized (DEFAULTS_LOCK) {
+            // Swap in a new list so that given() sees either the old or the new filters, never an empty list in between
+            RestAssured.filters = new CopyOnWriteArrayList<>(filters);
+        }
     }
 
     /**
@@ -541,12 +570,20 @@ public class RestAssured {
      */
     public static void replaceFiltersWith(Filter filter, Filter... additionalFilters) {
         Validate.notNull(filter, "Filter cannot be null");
-        RestAssured.filters.clear();
-        filters(filter, additionalFilters);
+        replaceFiltersWith(asFilterList(filter, additionalFilters));
+    }
+
+    private static List<Filter> asFilterList(Filter filter, Filter... additionalFilters) {
+        List<Filter> list = new ArrayList<>();
+        list.add(filter);
+        if (additionalFilters != null) {
+            Collections.addAll(list, additionalFilters);
+        }
+        return list;
     }
 
     /**
-     * @return The current default filters
+     * @return The current default filters (read-only)
      */
     public static List<Filter> filters() {
         return Collections.unmodifiableList(filters);
@@ -866,6 +903,30 @@ public class RestAssured {
     }
 
     /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters. E.g. if path is "/book/{hotelId}/{roomNumber}" you can do <code>query("/book/{hotelName}/{roomNumber}", "Hotels R Us", 22);</code>.
+     * @return The response of the request.
+     */
+    public static Response query(String path, Object... pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters.
+     * @return The response of the request.
+     */
+    public static Response query(String path, Map<String, ?> pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
      * Perform a GET request to a <code>uri</code>.
      *
      * @param uri The uri to send the request to.
@@ -933,6 +994,16 @@ public class RestAssured {
      */
     public static Response options(URI uri) {
         return given().options(uri);
+    }
+
+    /**
+     * Perform a QUERY request to a <code>uri</code>.
+     *
+     * @param uri The uri to send the request to.
+     * @return The response of the request.
+     */
+    public static Response query(URI uri) {
+        return given().query(uri);
     }
 
     /**
@@ -1006,6 +1077,16 @@ public class RestAssured {
     }
 
     /**
+     * Perform a QUERY request to a <code>url</code>.
+     *
+     * @param url The url to send the request to.
+     * @return The response of the request.
+     */
+    public static Response query(URL url) {
+        return given().query(url);
+    }
+
+    /**
      * Perform a GET request to the statically configured path (by default <code>http://localhost:8080</code>).
      *
      * @return The response of the GET request.
@@ -1066,6 +1147,15 @@ public class RestAssured {
      */
     public static Response options() {
         return given().options();
+    }
+
+    /**
+     * Perform a QUERY request to the statically configured path (by default <code>http://localhost:8080</code>).
+     *
+     * @return The response of the request.
+     */
+    public static Response query() {
+        return given().query();
     }
 
     /**
@@ -1244,31 +1334,62 @@ public class RestAssured {
      * Sets a certificate to be used for SSL authentication. See {@link java.lang.Class#getResource(String)}
      * for how to get a URL from a resource on the classpath.
      * <p>
-     * Uses SSL settings defined in {@link SSLConfig}.
+     * The file at <code>certURL</code> is used both as key store and as trust store: the client certificate (and its
+     * private key) in it is sent to servers that ask for one, and the server's certificate must be trusted by one of
+     * the certificates in it.
+     * </p>
+     * <p>
+     * Uses SSL settings defined in {@link SSLConfig}. A key store or trust store set there with
+     * {@link SSLConfig#keyStore(java.security.KeyStore)} or {@link SSLConfig#trustStore(java.security.KeyStore)} is used
+     * instead of the file for that purpose. The keys of such a key store are read with the key store password of the
+     * {@link SSLConfig} ({@link SSLConfig#keyStore(String)}) if there is one, and otherwise with <code>password</code>.
+     * The file is read as key store with the trust store type, unless the key store type is set.
      * </p>
      *
-     * @param certURL  URL to a JKS keystore where the certificate is stored.
-     * @param password The password for the keystore
+     * @param certURL  URL to a key store (for example a JKS or PKCS12 file) with the client certificate, also used as trust store.
+     * @param password The password for the key store and its private key
      * @return The request io.restassured.specification
      */
     public static AuthenticationScheme certificate(String certURL, String password) {
         SSLConfig sslConfig = config().getSSLConfig();
-        return certificate(certURL, password, CertificateAuthSettings.certAuthSettings().keyStoreType(sslConfig.getKeyStoreType()).trustStore(sslConfig.getTrustStore()).
+        CertificateAuthSettings settings = CertificateAuthSettings.certAuthSettings().keyStoreType(sslConfig.getKeyStoreType()).trustStore(sslConfig.getTrustStore()).
                 keyStore(sslConfig.getKeyStore()).trustStoreType(sslConfig.getTrustStoreType()).x509HostnameVerifier(sslConfig.getX509HostnameVerifier()).
-                port(sslConfig.getPort()).sslSocketFactory(sslConfig.getSSLSocketFactory()));
+                port(sslConfig.getPort());
+        // Keep an SSLContext as such, instead of turning it into an HttpClient 4 SSLSocketFactory
+        settings = sslConfig.getSSLContext() != null ? settings.sslContext(sslConfig.getSSLContext()) : settings.sslSocketFactory(sslConfig.getSSLSocketFactory());
+        // A key store set in SSLConfig is used instead of the file, so its keys are read with its own password when SSLConfig has one
+        String keyStorePassword = sslConfig.getKeyStore() != null && sslConfig.getKeyStorePassword() != null ? sslConfig.getKeyStorePassword() : password;
+        return certificateFromKeyStoreFile(certURL, password, keyStorePassword, settings);
     }
 
     /**
      * Sets a certificate to be used for SSL authentication. See {@link Class#getResource(String)} for how to get a URL from a resource
      * on the classpath.
-     * <p/>
+     * <p>
+     * The file at <code>certURL</code> is used both as key store and as trust store: the client certificate (and its
+     * private key) in it is sent to servers that ask for one, and the server's certificate must be trusted by one of
+     * the certificates in it. A key store or trust store given with
+     * {@link CertificateAuthSettings#keyStore(java.security.KeyStore)} or {@link CertificateAuthSettings#trustStore(java.security.KeyStore)}
+     * is used instead of the file for that purpose. Use {@link #certificate(String, String, String, String, CertificateAuthSettings)}
+     * to use different files as trust store and key store, or an empty trust store path to use the JVM's default trust store.
+     * The file is read as key store with the trust store type, unless the key store type is set.
+     * </p>
      *
-     * @param certURL                 URL to a JKS keystore where the certificate is stored.
-     * @param password                The password for the keystore
+     * @param certURL                 URL to a key store (for example a JKS or PKCS12 file) with the client certificate, also used as trust store.
+     * @param password                The password for the key store and its private key
      * @param certificateAuthSettings More advanced settings for the certificate authentication
      */
     public static AuthenticationScheme certificate(String certURL, String password, CertificateAuthSettings certificateAuthSettings) {
-        return certificate(certURL, password, "", "", certificateAuthSettings);
+        return certificateFromKeyStoreFile(certURL, password, password, certificateAuthSettings);
+    }
+
+    private static AuthenticationScheme certificateFromKeyStoreFile(String certURL, String password, String keyStorePassword,
+                                                                    CertificateAuthSettings settings) {
+        AssertParameter.notNull(settings, CertificateAuthSettings.class);
+        // The file was only read as trust store before, so it's read as key store with the trust store type, unless the key
+        // store type was changed from its default (the same in CertificateAuthSettings and SSLConfig)
+        String keyStoreType = KeyStore.getDefaultType().equals(settings.getKeyStoreType()) ? settings.getTrustStoreType() : settings.getKeyStoreType();
+        return certificate(certURL, password, certURL, keyStorePassword, settings.keyStoreType(keyStoreType));
     }
 
     /**
@@ -1301,7 +1422,11 @@ public class RestAssured {
         scheme.setPathToTrustStore(trustStorePath);
         scheme.setTrustStorePassword(trustStorePassword);
         scheme.setX509HostnameVerifier(certificateAuthSettings.getX509HostnameVerifier());
-        scheme.setSslSocketFactory(certificateAuthSettings.getSSLSocketFactory());
+        if (certificateAuthSettings.getSSLContext() != null) {
+            scheme.setSslContext(certificateAuthSettings.getSSLContext());
+        } else {
+            scheme.setSslSocketFactory(certificateAuthSettings.getSSLSocketFactory());
+        }
         return scheme;
     }
 
@@ -1406,7 +1531,11 @@ public class RestAssured {
      * @param parser      The parser to use when verifying the response.
      */
     public static void registerParser(String contentType, Parser parser) {
-        RESPONSE_PARSER_REGISTRAR.registerParser(contentType, parser);
+        synchronized (DEFAULTS_LOCK) {
+            ResponseParserRegistrar registrar = new ResponseParserRegistrar(RESPONSE_PARSER_REGISTRAR);
+            registrar.registerParser(contentType, parser);
+            RESPONSE_PARSER_REGISTRAR = registrar;
+        }
     }
 
     /**
@@ -1415,7 +1544,11 @@ public class RestAssured {
      * @param contentType The content-type associated with the parser to unregister.
      */
     public static void unregisterParser(String contentType) {
-        RESPONSE_PARSER_REGISTRAR.unregisterParser(contentType);
+        synchronized (DEFAULTS_LOCK) {
+            ResponseParserRegistrar registrar = new ResponseParserRegistrar(RESPONSE_PARSER_REGISTRAR);
+            registrar.unregisterParser(contentType);
+            RESPONSE_PARSER_REGISTRAR = registrar;
+        }
     }
 
     /**
@@ -1431,23 +1564,26 @@ public class RestAssured {
         basePath = DEFAULT_PATH;
         authentication = DEFAULT_AUTH;
         rootPath = DEFAULT_BODY_ROOT_PATH;
-        filters = new LinkedList<Filter>();
+        synchronized (DEFAULTS_LOCK) {
+            filters = new CopyOnWriteArrayList<>();
+            RESPONSE_PARSER_REGISTRAR = new ResponseParserRegistrar();
+        }
         requestSpecification = null;
         responseSpecification = null;
         urlEncodingEnabled = DEFAULT_URL_ENCODING_ENABLED;
-        RESPONSE_PARSER_REGISTRAR = new ResponseParserRegistrar();
         defaultParser = null;
         config = new RestAssuredConfig();
         sessionId = DEFAULT_SESSION_ID_VALUE;
         proxy = null;
     }
 
+    // Only reads the static defaults: given() is called from many threads at once when tests run in parallel
     private static TestSpecificationImpl createTestSpecification() {
-        if (defaultParser != null) {
-            RESPONSE_PARSER_REGISTRAR.registerDefaultParser(defaultParser);
-        }
         final ResponseParserRegistrar responseParserRegistrar = new ResponseParserRegistrar(RESPONSE_PARSER_REGISTRAR);
-        applySessionIdIfApplicable();
+        final Parser defaultParserToUse = defaultParser;
+        if (defaultParserToUse != null) {
+            responseParserRegistrar.registerDefaultParser(defaultParserToUse);
+        }
         LogRepository logRepository = new LogRepository();
         RestAssuredConfig restAssuredConfig = config();
         return new TestSpecificationImpl(
@@ -1457,16 +1593,12 @@ public class RestAssured {
         );
     }
 
-    private static void applySessionIdIfApplicable() {
-        if (!StringUtils.equals(sessionId, DEFAULT_SESSION_ID_VALUE)) {
-            final RestAssuredConfig configToUse;
-            if (config == null) {
-                configToUse = new RestAssuredConfig();
-            } else {
-                configToUse = config;
-            }
-            config = configToUse.sessionConfig(configToUse.getSessionConfig().sessionIdValue(sessionId));
+    private static RestAssuredConfig withSessionIdIfApplicable(RestAssuredConfig restAssuredConfig) {
+        final String sessionIdToUse = sessionId;
+        if (StringUtils.equals(sessionIdToUse, DEFAULT_SESSION_ID_VALUE)) {
+            return restAssuredConfig;
         }
+        return restAssuredConfig.sessionConfig(restAssuredConfig.getSessionConfig().sessionIdValue(sessionIdToUse));
     }
 
     /**
@@ -1496,7 +1628,7 @@ public class RestAssured {
      * @param protocol The standard name of the requested protocol. See the SSLContext section in the <a href="https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#SSLContext">Java Cryptography Architecture Standard Algorithm Name Documentation</a> for information about standard protocol names.
      */
     public static void useRelaxedHTTPSValidation(String protocol) {
-        config = RestAssured.config().sslConfig(SSLConfig.sslConfig().relaxedHTTPSValidation(protocol));
+        config = configWithoutSessionId().sslConfig(SSLConfig.sslConfig().relaxedHTTPSValidation(protocol));
     }
 
     /**
@@ -1527,7 +1659,7 @@ public class RestAssured {
      */
     public static void enableLoggingOfRequestAndResponseIfValidationFails(LogDetail logDetail) {
         LogConfig logConfig = LogConfig.logConfig().enableLoggingOfRequestAndResponseIfValidationFails(logDetail);
-        config = RestAssured.config().logConfig(logConfig);
+        config = configWithoutSessionId().logConfig(logConfig);
 
         // Update request specification if already defined otherwise it'll override the configs.
         // Note that request spec also influence response spec when it comes to logging if validation fails due to the way filters work
@@ -1544,11 +1676,14 @@ public class RestAssured {
     }
 
     /**
-     * Apply a keystore for all requests
+     * Apply a key store for all requests. The key store holds the client certificate (and its private key) that is sent
+     * to a server that asks for one (client certificate authentication, also known as mutual TLS). For example
      * <pre>
-     * given().keyStore("/truststore_javanet.jks", "test1234"). ..
+     * RestAssured.keyStore("/client_keystore.p12", "test1234");
      * </pre>
-     * </p>
+     * The password is used both for the key store and for the private key in it. The key store doesn't affect which
+     * server certificates are trusted: that's decided by the trust store if one is configured (see
+     * {@link #trustStore(String, String)}) and by the JVM's default trust otherwise.
      * <p>
      * Note that this is just a shortcut for:
      * </p>
@@ -1607,7 +1742,7 @@ public class RestAssured {
      * </pre>
      * Now you want to use this truststore in your client:
      * <pre>
-     * RestAssured.trustSture("/truststore_javanet.jks", "test1234");
+     * RestAssured.trustStore("/truststore_javanet.jks", "test1234");
      * </pre>
      * or
      * <pre>
@@ -1639,7 +1774,7 @@ public class RestAssured {
      */
     public static void trustStore(KeyStore truststore) {
         Validate.notNull(truststore, "Truststore cannot be null");
-        config = config().sslConfig(SSLConfig.sslConfig().trustStore(truststore));
+        config = configWithoutSessionId().sslConfig(SSLConfig.sslConfig().trustStore(truststore));
     }
 
     /**
@@ -1765,31 +1900,40 @@ public class RestAssured {
     }
 
     private static void applyKeyStore(Object pathToJks, String password) {
-        RestAssuredConfig restAssuredConfig = config();
+        RestAssuredConfig restAssuredConfig = configWithoutSessionId();
         final SSLConfig updatedSSLConfig;
         if (pathToJks instanceof File) {
             updatedSSLConfig = restAssuredConfig.getSSLConfig().keyStore((File) pathToJks, password);
         } else {
             updatedSSLConfig = restAssuredConfig.getSSLConfig().keyStore((String) pathToJks, password);
         }
-        config = config().sslConfig(updatedSSLConfig.allowAllHostnames()); // Allow all host names to be backward-compatible
+        config = restAssuredConfig.sslConfig(updatedSSLConfig.allowAllHostnames()); // Allow all host names to be backward-compatible
     }
 
     private static void applyTrustStore(Object pathToJks, String password) {
-        RestAssuredConfig restAssuredConfig = config();
+        RestAssuredConfig restAssuredConfig = configWithoutSessionId();
         final SSLConfig updatedSSLConfig;
         if (pathToJks instanceof File) {
             updatedSSLConfig = restAssuredConfig.getSSLConfig().trustStore((File) pathToJks, password);
         } else {
             updatedSSLConfig = restAssuredConfig.getSSLConfig().trustStore((String) pathToJks, password);
         }
-        config = config().sslConfig(updatedSSLConfig.allowAllHostnames()); // Allow all host names to be backward-compatible
+        config = restAssuredConfig.sslConfig(updatedSSLConfig.allowAllHostnames()); // Allow all host names to be backward-compatible
     }
 
     /**
-     * @return The assigned config or a new config is no config is assigned
+     * @return The assigned config or a new config is no config is assigned. If {@link #sessionId} is set, the returned
+     * config uses it as session id value (see {@link SessionConfig#sessionIdValue(String)}), but {@link #config} itself
+     * isn't changed.
      */
     public static RestAssuredConfig config() {
-        return config == null ? new RestAssuredConfig() : config;
+        return withSessionIdIfApplicable(configWithoutSessionId());
+    }
+
+    // The static config as assigned, for methods that assign a changed copy of it to RestAssured.config, so that the
+    // session id is never stored in RestAssured.config
+    private static RestAssuredConfig configWithoutSessionId() {
+        RestAssuredConfig currentConfig = config;
+        return currentConfig == null ? new RestAssuredConfig() : currentConfig;
     }
 }

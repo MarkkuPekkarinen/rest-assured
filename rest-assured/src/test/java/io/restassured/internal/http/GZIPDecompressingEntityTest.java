@@ -18,10 +18,11 @@ package io.restassured.internal.http;
 import io.restassured.internal.http.GZIPEncoding.GZIPDecompressingEntity;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.entity.ByteArrayEntity;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.zip.GZIPOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,7 +47,7 @@ public class GZIPDecompressingEntityTest {
         });
 
         // Then
-        String string = IOUtils.toString(gzipDecompressingEntity.getContent());
+        String string = IOUtils.toString(gzipDecompressingEntity.getContent(), StandardCharsets.UTF_8);
         assertThat(string).isEqualTo(json);
     }
 

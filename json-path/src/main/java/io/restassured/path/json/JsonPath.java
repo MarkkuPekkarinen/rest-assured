@@ -31,6 +31,7 @@ import io.restassured.path.json.exception.JsonPathException;
 import io.restassured.path.json.mapper.factory.GsonObjectMapperFactory;
 import io.restassured.path.json.mapper.factory.Jackson1ObjectMapperFactory;
 import io.restassured.path.json.mapper.factory.Jackson2ObjectMapperFactory;
+import io.restassured.path.json.mapper.factory.Jackson3ObjectMapperFactory;
 
 import java.io.*;
 import java.net.URL;
@@ -108,7 +109,7 @@ import java.util.Map.Entry;
  */
 public class JsonPath {
 
-    public static JsonPathConfig config = null;
+    public static volatile JsonPathConfig config = null;
 
     private final JsonParser jsonParser;
     private JsonPathConfig jsonPathConfig = null;
@@ -605,9 +606,9 @@ public class JsonPath {
      * <p/>
      * maps the second book to a Book instance.
      *
-     * @param path       The path to the object to map
-     * @param typeRef    The class type of the expected object
-     * @param <T>        The type of the expected object
+     * @param path    The path to the object to map
+     * @param typeRef The class type of the expected object
+     * @param <T>     The type of the expected object
      * @return The object
      */
     public <T> T getObject(String path, TypeRef<T> typeRef) {
@@ -713,11 +714,23 @@ public class JsonPath {
     }
 
     /**
+     * Configure JsonPath to use a specific Gson object mapper factory
+     *
+     * @param factory The Gson object mapper factory instance
+     * @return a new JsonPath instance
+     */
+    public JsonPath using(io.restassured.common.mapper.factory.GsonObjectMapperFactory factory) {
+        return new JsonPath(this, getJsonPathConfig().gsonObjectMapperFactory(factory));
+    }
+
+    /**
      * Configure JsonPath to use a specific Jackson object mapper factory
      *
      * @param factory The Jackson object mapper factory instance
      * @return a new JsonPath instance
+     * @deprecated Jackson 1 support is removed in REST Assured 7.0.0. Use Jackson 2 or 3 instead.
      */
+    @Deprecated
     public JsonPath using(Jackson1ObjectMapperFactory factory) {
         return new JsonPath(this, getJsonPathConfig().jackson1ObjectMapperFactory(factory));
     }
@@ -730,6 +743,36 @@ public class JsonPath {
      */
     public JsonPath using(Jackson2ObjectMapperFactory factory) {
         return new JsonPath(this, getJsonPathConfig().jackson2ObjectMapperFactory(factory));
+    }
+
+    /**
+     * Configure JsonPath to use a specific Jackson 2 object mapper factory
+     *
+     * @param factory The Jackson 2 object mapper factory instance
+     * @return a new JsonPath instance
+     */
+    public JsonPath using(io.restassured.common.mapper.factory.Jackson2ObjectMapperFactory factory) {
+        return new JsonPath(this, getJsonPathConfig().jackson2ObjectMapperFactory(factory));
+    }
+
+    /**
+     * Configure JsonPath to use a specific Jackson 3 object mapper factory
+     *
+     * @param factory The Jackson 3 object mapper factory instance
+     * @return a new JsonPath instance
+     */
+    public JsonPath using(Jackson3ObjectMapperFactory factory) {
+        return new JsonPath(this, getJsonPathConfig().jackson3ObjectMapperFactory(factory));
+    }
+
+    /**
+     * Configure JsonPath to use a specific Jackson 3 object mapper factory
+     *
+     * @param factory The Jackson 3 object mapper factory instance
+     * @return a new JsonPath instance
+     */
+    public JsonPath using(io.restassured.common.mapper.factory.Jackson3ObjectMapperFactory factory) {
+        return new JsonPath(this, getJsonPathConfig().jackson3ObjectMapperFactory(factory));
     }
 
     /**
@@ -901,6 +944,7 @@ public class JsonPath {
     public JsonPath setRoot(String rootPath) {
         return setRootPath(rootPath);
     }
+
     /**
      * Set the root path of the document so that you don't need to write the entire path. E.g.
      * <pre>
@@ -1024,19 +1068,15 @@ public class JsonPath {
 
     private ConfigurableJsonSlurper createConfigurableJsonSlurper() {
         JsonPathConfig cfg = getJsonPathConfig();
-        return new ConfigurableJsonSlurper(cfg.numberReturnType());
+        return new ConfigurableJsonSlurper(cfg.numberReturnType(), cfg.numberLengthLimit());
     }
 
     private JsonPathConfig getJsonPathConfig() {
-        JsonPathConfig cfg;
-        if (config == null && jsonPathConfig == null) {
-            cfg = new JsonPathConfig();
-        } else if (jsonPathConfig != null) {
-            cfg = jsonPathConfig;
-        } else {
-            cfg = config;
+        if (jsonPathConfig != null) {
+            return jsonPathConfig;
         }
-        return cfg;
+        JsonPathConfig staticConfig = config;
+        return staticConfig == null ? new JsonPathConfig() : staticConfig;
     }
 
     private abstract class JsonParser {
@@ -1077,7 +1117,9 @@ public class JsonPath {
 
     private Object jsonStringToObject(String object, Class objectType) {
         JsonPathConfig cfg = new JsonPathConfig(getJsonPathConfig());
-        if (cfg.hasCustomJackson10ObjectMapperFactory()) {
+        if (cfg.hasCustomJackson30ObjectMapperFactory()) {
+            cfg = cfg.defaultParserType(JsonParserType.JACKSON_3);
+        } else if (cfg.hasCustomJackson10ObjectMapperFactory()) {
             cfg = cfg.defaultParserType(JsonParserType.JACKSON_1);
         } else if (cfg.hasCustomGsonObjectMapperFactory()) {
             cfg = cfg.defaultParserType(JsonParserType.GSON);

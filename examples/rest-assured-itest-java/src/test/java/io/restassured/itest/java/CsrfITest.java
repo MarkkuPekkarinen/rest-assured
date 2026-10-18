@@ -20,10 +20,12 @@ import io.restassured.RestAssured;
 import io.restassured.config.CsrfConfig;
 import io.restassured.config.LogConfig;
 import io.restassured.config.RestAssuredConfig;
+import io.restassured.filter.cookie.CookieFilter;
 import io.restassured.filter.log.LogDetail;
+import io.restassured.filter.session.SessionFilter;
 import io.restassured.itest.java.support.WithJetty;
 import org.apache.commons.io.output.WriterOutputStream;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -33,16 +35,15 @@ import static io.restassured.RestAssured.*;
 import static io.restassured.config.CsrfConfig.CsrfPrioritization.FORM;
 import static io.restassured.config.CsrfConfig.CsrfPrioritization.HEADER;
 import static io.restassured.config.CsrfConfig.csrfConfig;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.startsWith;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 public class CsrfITest extends WithJetty {
 
     @Test
-    public void csrfConfigWithoutCsrfTokenPathDisablesCsrf() {
+    void csrfConfigWithoutCsrfTokenPathDisablesCsrf() {
         given().
                 config(config().csrfConfig(csrfConfig())).
         when().
@@ -52,39 +53,35 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfWithInvalidTokenPathAndAutoDetectionOfCsrfInputFieldName() {
-        try {
+    void csrfWithInvalidTokenPathAndAutoDetectionOfCsrfInputFieldName() {
+        assertThatThrownBy(() ->
             given().
-                    csrf("/invalid").
+                csrf("/invalid").
             when().
-                    post("/loginPageWithCsrf").
+                post("/loginPageWithCsrf").
             then().
-                    statusCode(200);
-            fail("Expecting IllegalArgumentException");
-        } catch (Exception e) {
-            assertTrue(e instanceof IllegalArgumentException);
-            assertTrue(e.getMessage().contains("Not found"));
-        }
+                statusCode(200)
+        )
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Not found");
     }
 
     @Test
-    public void csrfWithInvalidTokenPathAndSpecificCsrfInputFieldName() {
-        try {
+    void csrfWithInvalidTokenPathAndSpecificCsrfInputFieldName() {
+        assertThatThrownBy(() ->
             given().
-                    csrf("/invalid", "_csrf").
+                csrf("/invalid", "_csrf").
             when().
-                    post("/loginPageWithCsrf").
+                post("/loginPageWithCsrf").
             then().
-                    statusCode(200);
-            fail("Expecting IllegalArgumentException");
-        } catch (Exception e) {
-            assertTrue(e instanceof IllegalArgumentException);
-            assertTrue(e.getMessage(), e.getMessage().contains("Couldn't find a the CSRF token in response. Expecting either an input field with name \"_csrf\" or a meta tag with name \"_csrf_header\". Response was:"));
-        }
+                statusCode(200)
+        )
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Couldn't find a the CSRF token in response. Expecting either an input field with name \"_csrf\" or a meta tag with name \"_csrf_header\". Response was:");
     }
 
     @Test
-    public void csrfDslWithSpecificCsrfInputFieldName() {
+    void csrfDslWithSpecificCsrfInputFieldName() {
         given().
                 csrf("/loginPageWithCsrf", "_csrf").
         when().
@@ -94,7 +91,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfAutoCsrfDetectionDefinedInRequestConfig() {
+    void csrfAutoCsrfDetectionDefinedInRequestConfig() {
         given().
                 config(config().csrfConfig(csrfConfig().with().csrfTokenPath("/loginPageWithCsrf").loggingEnabled(LogDetail.BODY))).
         when().
@@ -104,7 +101,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfConfigUsesAutoCsrfDetectionDefinedByDefaultWhenUsingConstructorToCreateCsrfConfig() {
+    void csrfConfigUsesAutoCsrfDetectionDefinedByDefaultWhenUsingConstructorToCreateCsrfConfig() {
         given().
                 config(config().csrfConfig(new CsrfConfig("/loginPageWithCsrf"))).
         when().
@@ -114,7 +111,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfConfigUsesAutoCsrfDetectionDefinedByDefaultWhenUsingStaticMethodToCreateCsrfConfig() {
+    void csrfConfigUsesAutoCsrfDetectionDefinedByDefaultWhenUsingStaticMethodToCreateCsrfConfig() {
         given().
                 config(config().csrfConfig(csrfConfig().with().csrfTokenPath("/loginPageWithCsrf"))).
         when().
@@ -124,7 +121,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfConfigWithLogging() {
+    void csrfConfigWithLogging() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer, StandardCharsets.UTF_8), true);
 
@@ -149,11 +146,11 @@ public class CsrfITest extends WithJetty {
                         "HTTP/1.1 200 OK%n" +
                         "Content-Type: text/html;charset=utf-8%n" +
                         "Content-Length: 589%n" +
-                        "Server: Jetty(9.4.34.v20201102)%n%n")));
+                        "Server: Jetty(9.4.58.v20250814)%n%n")));
     }
 
     @Test
-    public void csrfIsNotUsedWhenTokenPathIsUndefined() {
+    void csrfIsNotUsedWhenTokenPathIsUndefined() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer, StandardCharsets.UTF_8), true);
 
@@ -168,7 +165,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfIsNotUsedForGetRequests() {
+    void csrfIsNotUsedForGetRequests() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer, StandardCharsets.UTF_8), true);
 
@@ -183,7 +180,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfIsNotUsedForHeadRequests() {
+    void csrfIsNotUsedForHeadRequests() {
         final StringWriter writer = new StringWriter();
         final PrintStream captor = new PrintStream(new WriterOutputStream(writer, StandardCharsets.UTF_8), true);
 
@@ -198,7 +195,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfAutoCsrfDetectionDefinedInStatically() {
+    void csrfAutoCsrfDetectionDefinedInStatically() {
         RestAssured.config = RestAssuredConfig.config().csrfConfig(csrfConfig().with().csrfTokenPath("/loginPageWithCsrf"));
 
         try {
@@ -212,7 +209,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfRequestConfigIsOverridingStaticConfig() {
+    void csrfRequestConfigIsOverridingStaticConfig() {
         RestAssured.config = RestAssuredConfig.config().csrfConfig(csrfConfig().with().csrfTokenPath("/loginPageWithCsrf2"));
 
         try {
@@ -228,7 +225,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfDslIsMergedWithStaticConfigWhenSpecifyingDifferentThingInDslAndStaticConfig() {
+    void csrfDslIsMergedWithStaticConfigWhenSpecifyingDifferentThingInDslAndStaticConfig() {
         // TODO FIx test
         RestAssured.config = RestAssuredConfig.config().csrfConfig(csrfConfig().with().csrfInputFieldName("___csrf"));
 
@@ -246,7 +243,7 @@ public class CsrfITest extends WithJetty {
     }
 
     @Test
-    public void csrfDslIsOverridingWithStaticConfigWhenSpecifyingSamePropertyInDslAndStaticConfig() {
+    void csrfDslIsOverridingWithStaticConfigWhenSpecifyingSamePropertyInDslAndStaticConfig() {
         RestAssured.config = RestAssuredConfig.config().csrfConfig(csrfConfig().with().csrfTokenPath("/error"));
 
         try {
@@ -324,6 +321,69 @@ public class CsrfITest extends WithJetty {
                 queryParam("expectedType", "FORM").
         when().
                 post("/pageThatRequireFormOrHeaderCsrf").
+        then().
+                statusCode(200);
+    }
+
+    @Test
+    public void usesCookiesDefinedInCsrfRequestWhenPostingToOtherResourceByDefault() {
+        given().
+                csrf("/loginPageWithCsrfAndSession").
+        when().
+                post("/loginPageWithCsrfAndSession").
+        then().
+                statusCode(200);
+    }
+
+    @Test
+    public void doesNotUseCookiesDefinedInCsrfRequestWhenPostingToOtherResourceWhenConfiguredNotTo() {
+        given().
+                config(config().csrfConfig(csrfConfig().automaticallyApplyCookies(false))).
+                csrf("/loginPageWithCsrfAndSession").
+        when().
+                post("/loginPageWithCsrfAndSession").
+        then().
+                statusCode(403);
+    }
+
+    @Test
+    public void whenCsrfIsConfiguredToAutomaticallyApplyCookiesThenTheCookiesArePropagatedToCookieFilter() {
+        CookieFilter filter = new CookieFilter();
+
+        given().
+               filter(filter).
+               csrf("/loginPageWithCsrfAndSession").
+        when().
+               post("/loginPageWithCsrfAndSession").
+        then().
+               statusCode(200);
+
+        // Subsequent request
+        given().
+                filter(filter).
+        when().
+               get("/session-required").
+        then().
+                statusCode(200);
+    }
+
+    @Test
+    public void whenCsrfIsConfiguredToAutomaticallyApplyCookiesThenTheCookiesArePropagatedToSessionFilter() {
+        SessionFilter filter = new SessionFilter();
+
+        given().
+               filter(filter).
+               csrf("/loginPageWithCsrfAndSession").
+        when().
+               post("/loginPageWithCsrfAndSession").
+        then().
+               statusCode(200);
+
+        // Subsequent request
+        given().
+                filter(filter).
+        when().
+               get("/session-required").
         then().
                 statusCode(200);
     }

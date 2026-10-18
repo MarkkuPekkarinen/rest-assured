@@ -26,7 +26,9 @@ import io.restassured.internal.ResponseSpecificationImpl;
 import io.restassured.internal.SpecificationMerger;
 import io.restassured.internal.log.LogRepository;
 import io.restassured.matcher.DetailedCookieMatcher;
+import io.restassured.matcher.ResponseAwareMatcher;
 import io.restassured.parsing.Parser;
+import io.restassured.response.Response;
 import io.restassured.specification.Argument;
 import io.restassured.specification.ResponseSpecification;
 import org.hamcrest.Matcher;
@@ -45,7 +47,7 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
  * RequestSpecification requestSpec = new RequestSpecBuilder().addParam("parameter1", "value1").build();
  *
- * given(responseSpec, requestSpec).post("/something");
+ * given(requestSpec, responseSpec).post("/something");
  * </pre>
  * <p/>
  * or
@@ -160,6 +162,28 @@ public class ResponseSpecBuilder {
      */
     public ResponseSpecBuilder expectHeader(String headerName, String expectedValue) {
         spec.header(headerName, expectedValue);
+        return this;
+    }
+
+    /**
+     * Expect that a response header matches the supplied header name and {@link ResponseAwareMatcher}.
+     * <p>
+     * E.g. expect that the response of the POST request to "/redirect" contains a Location header that ends with
+     * the id returned in the response body:
+     * <pre>
+     * ResponseSpecification responseSpec = new ResponseSpecBuilder()
+     *     .expectHeader("Location", response -> endsWith("/redirect/" + response.path("id")))
+     *     .build();
+     * </pre>
+     * </p>
+     *
+     * @param headerName           The name of the expected header
+     * @param expectedValueMatcher The {@link ResponseAwareMatcher} that creates the Hamcrest matcher based on the response
+     * @return The builder
+     * @see ResponseSpecification#header(String, ResponseAwareMatcher)
+     */
+    public ResponseSpecBuilder expectHeader(String headerName, ResponseAwareMatcher<Response> expectedValueMatcher) {
+        spec.header(headerName, expectedValueMatcher);
         return this;
     }
 
@@ -653,7 +677,18 @@ public class ResponseSpecBuilder {
     }
 
     /**
-     * Build the response specification.
+     * Build the response specification. Use it with {@link ResponseSpecification#spec(ResponseSpecification)} (e.g.
+     * <code>given().spec(requestSpec).expect().spec(responseSpec)</code>),
+     * {@link io.restassured.response.ValidatableResponseOptions#spec(ResponseSpecification)} (e.g.
+     * <code>then().spec(responseSpec)</code>) or
+     * {@link io.restassured.RestAssured#given(io.restassured.specification.RequestSpecification, ResponseSpecification)}, e.g.
+     * <pre>
+     * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
+     *
+     * given().spec(requestSpec).when().get("/something").then().spec(responseSpec);
+     * </pre>
+     * Defining or sending a request (e.g. <code>responseSpec.when().get("/something")</code> or
+     * <code>responseSpec.given()</code>) directly from the built specification throws an {@link IllegalStateException}.
      *
      * @return The assembled response specification
      */
@@ -677,10 +712,15 @@ public class ResponseSpecBuilder {
         } finally {
             registrarField.setAccessible(false);
         }
-        return new ResponseParserRegistrar(rpr);
+        ResponseParserRegistrar responseParserRegistrar = new ResponseParserRegistrar(rpr);
+        Parser defaultParser = RestAssured.defaultParser;
+        if (defaultParser != null) {
+            responseParserRegistrar.registerDefaultParser(defaultParser);
+        }
+        return responseParserRegistrar;
     }
 
     private RestAssuredConfig restAssuredConfig() {
-        return RestAssured.config == null ? new RestAssuredConfig() : RestAssured.config;
+        return RestAssured.config();
     }
 }

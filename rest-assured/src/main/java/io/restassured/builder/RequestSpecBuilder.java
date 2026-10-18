@@ -55,7 +55,7 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
  * ResponseSpecification responseSpec = new ResponseSpecBuilder().expectStatusCode(200).build();
  * RequestSpecification requestSpec = new RequestSpecBuilder().addParam("parameter1", "value1").build();
  *
- * given(responseSpec, requestSpec).post("/something");
+ * given(requestSpec, responseSpec).post("/something");
  * </pre>
  * <p/>
  * or
@@ -81,8 +81,8 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. This works for the
-     * POST, PUT and PATCH methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a String request body (such as e.g. JSON or XML) to be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p/>
      *
      * @param body The body to send.
@@ -94,8 +94,8 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Specify a byte array request body to be sent with the request. This only works for the
-     * POST http method. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a byte array request body to be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      *
      * @param body The body to send.
      * @return The request specification builder
@@ -108,8 +108,7 @@ public class RequestSpecBuilder {
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request.
      * If the object is a primitive or <a href="http://download.oracle.com/javase/6/docs/api/java/lang/Number.html">Number</a> the object will
-     * be converted to a String and put in the request body. This works for the POST, PUT and PATCH methods only.
-     * Trying to do this for the other http methods will cause an exception to be thrown.
+     * be converted to a String and put in the request body. It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p/>
      *
      * @param object The object to serialize and send with the request
@@ -122,7 +121,7 @@ public class RequestSpecBuilder {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      *
      * @param object The object to serialize and send with the request
      * @param mapper The object mapper
@@ -135,7 +134,7 @@ public class RequestSpecBuilder {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper type.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -499,15 +498,12 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Specify a keystore.
+     * Specify a key store that holds the client certificate (and its private key) to send to a server that asks for one
+     * (client certificate authentication, also known as mutual TLS). For example
      * <pre>
-     * RestAssured.keyStore("/truststore_javanet.jks", "test1234");
+     * new RequestSpecBuilder().setKeyStore("/client_keystore.p12", "test1234"). ..
      * </pre>
-     * or
-     * <pre>
-     * given().keyStore("/truststore_javanet.jks", "test1234"). ..
-     * </pre>
-     * </p>
+     * The key store doesn't affect which server certificates are trusted, see {@link #setTrustStore(String, String)}.
      *
      * @param pathToJks The path to the JKS
      * @param password  The store pass
@@ -1046,20 +1042,28 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Merge this builder with settings from another specification. Note that the supplied specification
-     * can overwrite data in the current specification. The following settings are overwritten:
+     * Merge this builder with settings from another specification. Settings that the supplied specification
+     * only has from the defaults (such as {@link RestAssured#baseURI}, {@link RestAssured#port}, {@link RestAssured#authentication} or
+     * {@link RestAssured#requestSpecification}) are not copied. The following settings are overwritten when the supplied specification sets them:
      * <ul>
-     * <li>Port</li>
-     * <li>Authentication scheme</
-     * <li>Content type</li>
+     * <li>Base URI, base path and port</li>
+     * <li>Authentication scheme (setting it to none, for example with <code>auth().none()</code>, also removes authentication filters such as form authentication)</li>
      * <li>Request body</li>
+     * <li>Proxy</li>
+     * <li>URL encoding enabled/disabled</li>
+     * <li>Content-Type allowed/disallowed: <code>contentType(..)</code> allows it and <code>noContentType()</code> disallows it. A Content-Type set with
+     * <code>header(..)</code> doesn't count, so it doesn't undo <code>noContentType()</code> of the current specification.</li>
+     * <li>CSRF disabled (<code>disableCsrf()</code>)</li>
+     * <li>Each part of the configuration that the supplied specification configured (for example the SSL config, which holds the keystore)</li>
+     * <li>Method and path (these are only set on the specification that a filter receives)</li>
      * </ul>
      * The following settings are merged:
      * <ul>
-     * <li>Parameters</li>
+     * <li>Parameters, query parameters, form parameters and path parameters (a parameter of the supplied specification replaces one with the same name)</li>
+     * <li>Multi-part form data parameters</li>
      * <li>Cookies</li>
-     * <li>Headers</li>
-     * <li>Filters</li>
+     * <li>Headers (a Content-Type or Accept header of the supplied specification replaces the current one by default, see {@link io.restassured.config.HeaderConfig})</li>
+     * <li>Filters (a filter that is already present isn't added again, and an authentication filter replaces the current ones)</li>
      * </ul>
      *
      * @param specification The specification to add
@@ -1087,7 +1091,16 @@ public class RequestSpecBuilder {
     }
 
     /**
-     * Build RequestSpecBuilder.
+     * Build the request specification. Use it with {@link RestAssured#given(RequestSpecification)},
+     * {@link RequestSpecification#spec(RequestSpecification)} or
+     * {@link RestAssured#given(RequestSpecification, io.restassured.specification.ResponseSpecification)}, e.g.
+     * <pre>
+     * RequestSpecification requestSpec = new RequestSpecBuilder().addHeader("name", "value").build();
+     *
+     * given().spec(requestSpec).when().get("/something");
+     * </pre>
+     * Sending a request (e.g. <code>requestSpec.when().get("/something")</code>) or defining response expectations
+     * (e.g. <code>requestSpec.then()</code>) directly from the built specification throws an {@link IllegalStateException}.
      *
      * @return The assembled request specification
      */

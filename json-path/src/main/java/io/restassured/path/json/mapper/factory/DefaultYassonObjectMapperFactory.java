@@ -15,20 +15,9 @@
  */
 package io.restassured.path.json.mapper.factory;
 
-import org.eclipse.yasson.JsonBindingProvider;
-
-import javax.json.bind.Jsonb;
-import java.lang.reflect.Type;
-
-public class DefaultYassonObjectMapperFactory implements JsonbObjectMapperFactory {
-    
-    private static Object cachedJsonb = null;
-    
-	@Override
-	public Jsonb create(Type cls, String charset) {
-	    if (cachedJsonb == null) {
-	        cachedJsonb = new JsonBindingProvider().create().build();
-	    }
-	    return (Jsonb) cachedJsonb;
-	}
+/**
+ * @deprecated Use {@link io.restassured.common.mapper.factory.DefaultYassonObjectMapperFactory} instead. This class is removed in REST Assured 8.0.0.
+ */
+@Deprecated
+public class DefaultYassonObjectMapperFactory extends io.restassured.common.mapper.factory.DefaultYassonObjectMapperFactory implements JsonbObjectMapperFactory {
 }

@@ -19,7 +19,7 @@ package io.restassured.path.xml;
 import io.restassured.path.xml.config.XmlPathConfig;
 import io.restassured.path.xml.element.Node;
 import io.restassured.path.xml.element.NodeChildren;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.List;
@@ -636,6 +636,50 @@ public class XmlPathTest {
 
         // Then
         assertThat(xmlPath.getString("root.some-list[0]"), equalTo("one"));
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingNegativeIndex() throws Exception {
+        // Given
+        String xml = "<root><some-list>one</some-list><some-list>two</some-list><some-list>three</some-list></root>";
+
+        // When
+        XmlPath xmlPath = from(xml);
+
+        // Then
+        assertThat(xmlPath.getString("root.some-list[-1]"), equalTo("three"));
+        assertThat(xmlPath.getString("root.some-list[-2]"), equalTo("two"));
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingNegativeIndexFollowedByMorePath() {
+        // Given
+        String xml = "<root><some-list my-attr=\"1\"><sub-el>one</sub-el></some-list><some-list my-attr=\"2\"><sub-el>two</sub-el></some-list></root>";
+
+        // When
+        XmlPath xmlPath = from(xml);
+
+        // Then
+        assertThat(xmlPath.getString("root.some-list[-1].sub-el"), equalTo("two"));
+        assertThat(xmlPath.getString("root.some-list[-1].@my-attr"), equalTo("2"));
+    }
+
+    @Test
+    public void escapesListsWithHyphenWhenUsingRangeFollowedByMorePath() {
+        // Given
+        String xml = "<root><some-list><sub-el>one</sub-el></some-list><some-list><sub-el>two</sub-el></some-list><some-list><sub-el>three</sub-el></some-list>" +
+                "<list><sub>one</sub></list><list><sub>two</sub></list><list><sub>three</sub></list></root>";
+
+        // When
+        XmlPath xmlPath = from(xml);
+
+        // Then
+        assertThat(xmlPath.getList("root.some-list[0..-1].sub-el"), contains("one", "two", "three"));
+        assertThat(xmlPath.getList("root.some-list[-2..-1].sub-el"), contains("two", "three"));
+        assertThat(xmlPath.getList("root.some-list[0..1].sub-el"), contains("one", "two"));
+        assertThat(xmlPath.getList("root.list[0..-1].sub"), contains("one", "two", "three"));
+        assertThat(xmlPath.getList("root.list[-2..-1].sub"), contains("two", "three"));
+        assertThat(xmlPath.getList("root.list[0..1].sub"), contains("one", "two"));
     }
 
     @Test public void

@@ -32,7 +32,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
-import static java.lang.String.format;
 import static org.apache.commons.lang3.StringUtils.trim;
 import static org.apache.http.HttpHeaders.CONTENT_TYPE;
 
@@ -62,6 +61,7 @@ public class ResponseBuilder {
             restAssuredResponse.setRpr(raResponse.getRpr());
             restAssuredResponse.setLogRepository(raResponse.getLogRepository());
             restAssuredResponse.setFilterContextProperties(raResponse.getFilterContextProperties());
+            restAssuredResponse.setApacheHttpContext(raResponse.getApacheHttpContext());
         } else {
             restAssuredResponse.setContent(response.asInputStream());
         }
@@ -210,10 +210,6 @@ public class ResponseBuilder {
     public Response build() {
         final int statusCode = restAssuredResponse.statusCode();
 
-        if (statusCode < 100 || statusCode >= 600) {
-            throw new IllegalArgumentException(format("Status code must be greater than 100 and less than 600, was %d.", statusCode));
-        }
-
         if (StringUtils.isBlank(restAssuredResponse.statusLine())) {
             restAssuredResponse.setStatusLine(restAssuredResponse.statusCode());
         }
@@ -222,7 +218,10 @@ public class ResponseBuilder {
         if (restAssuredResponse.getConfig() == null) {
             restAssuredResponse.setConfig(RestAssuredConfig.config());
         }
-        restAssuredResponse.setRpr(new ResponseParserRegistrar());
+
+        if (restAssuredResponse.getRpr() == null) {
+            restAssuredResponse.setRpr(new ResponseParserRegistrar());
+        }
         return restAssuredResponse;
     }
 

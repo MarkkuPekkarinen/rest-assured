@@ -37,8 +37,8 @@ import java.util.Map;
 public interface RequestSpecification extends RequestSender {
 
     /**
-     * Specify a String request body (such as e.g. JSON or XML) that'll be sent with the request. This works for the
-     * POST and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a String request body (such as e.g. JSON or XML) that'll be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -55,8 +55,8 @@ public interface RequestSpecification extends RequestSender {
     RequestSpecification body(String body);
 
     /**
-     * Specify a byte array request body that'll be sent with the request. This only works for the
-     * POST http method. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify a byte array request body that'll be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -73,8 +73,8 @@ public interface RequestSpecification extends RequestSender {
     RequestSpecification body(byte[] body);
 
     /**
-     * Specify file content that'll be sent with the request. This only works for the
-     * POST, PATCH and PUT http method. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify file content that'll be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -92,8 +92,8 @@ public interface RequestSpecification extends RequestSender {
     RequestSpecification body(File body);
 
     /**
-     * Specify file content that'll be sent with the request. This only works for the
-     * POST, PATCH and PUT http method. Trying to do this for the other http methods will cause an exception to be thrown.
+     * Specify file content that'll be sent with the request. It is typically used with the
+     * POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -113,8 +113,7 @@ public interface RequestSpecification extends RequestSender {
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request.
      * If the object is a primitive or <a href="http://download.oracle.com/javase/6/docs/api/java/lang/Number.html">Number</a> the object will
-     * be converted to a String and put in the request body. This works for the POST and PUT methods only.
-     * Trying to do this for the other http methods will cause an exception to be thrown.
+     * be converted to a String and put in the request body. It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -152,7 +151,7 @@ public interface RequestSpecification extends RequestSender {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -176,7 +175,7 @@ public interface RequestSpecification extends RequestSender {
 
     /**
      * Specify an Object request content that will automatically be serialized to JSON or XML and sent with the request using a specific object mapper type.
-     * This works for the POST, PATCH and PUT methods only. Trying to do this for the other http methods will cause an exception to be thrown.
+     * It is typically used with the POST, PUT, PATCH and QUERY methods.
      * <p>
      * Example of use:
      * <pre>
@@ -611,6 +610,20 @@ public interface RequestSpecification extends RequestSender {
     RequestSpecification pathParams(Map<String, ?> parameterNameValuePairs);
 
     /**
+     * Perform a QUERY request to a <code>path</code> using named path parameters. This default implementation applies the
+     * path parameters with {@link #pathParams(Map)} and then sends the request using {@link #request(io.restassured.http.Method, String, Object...)}.
+     * See {@link #query(String, Object...)} for details on the QUERY method.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters.
+     * @return The response of the request.
+     */
+    @Override
+    default io.restassured.response.Response query(String path, Map<String, ?> pathParams) {
+        return pathParams(pathParams).request(io.restassured.http.Method.QUERY, path);
+    }
+
+    /**
      * Define a REST Assured configuration. E.g.
      * <pre>
      * given().config(config().redirect(redirectConfig().followRedirects(true).and().maxRedirects(0))). ..
@@ -666,13 +679,36 @@ public interface RequestSpecification extends RequestSender {
      * </pre>
      * Now you want to use this truststore in your client:
      * <pre>
-     * RestAssured.keyStore("/truststore_javanet.jks", "test1234");
+     * RestAssured.trustStore("/truststore_javanet.jks", "test1234");
      * </pre>
      * or
      * <pre>
-     * given().keyStore("/truststore_javanet.jks", "test1234"). ..
+     * given().trustStore("/truststore_javanet.jks", "test1234"). ..
      * </pre>
      * </p>
+     * <p>
+     * Note that this is just a shortcut for:
+     * <pre>
+     * given().config(RestAssured.config().sslConfig(sslConfig().trustStore(path, password));
+     * </pre>
+     * </p>
+     *
+     * @param path     The path to the trust store. REST Assured will first look in the classpath and if not found it will look for the JKS in the local file-system.
+     * @param password The store pass
+     * @return The request specification
+     * @see #keyStore(String, String)
+     */
+    RequestSpecification trustStore(String path, String password);
+
+    /**
+     * Use a key store that holds the client certificate (and its private key) to send to a server that asks for one
+     * (client certificate authentication, also known as mutual TLS). For example
+     * <pre>
+     * given().keyStore("/client_keystore.p12", "test1234"). ..
+     * </pre>
+     * The password is used both for the key store and for the private key in it. The key store doesn't affect which
+     * server certificates are trusted: that's decided by the trust store if one is configured (see
+     * {@link #trustStore(String, String)}) and by the JVM's default trust otherwise.
      * <p>
      * Note that this is just a shortcut for:
      * <pre>
@@ -680,9 +716,10 @@ public interface RequestSpecification extends RequestSender {
      * </pre>
      * </p>
      *
-     * @param pathToJks The path to the JKS. The path to the JKS. REST Assured will first look in the classpath and if not found it will look for the JKS in the local file-system.
+     * @param pathToJks The path to the key store. REST Assured will first look in the classpath and if not found it will look for the key store in the local file-system.
      * @param password  The store pass
      * @return The request specification
+     * @see #trustStore(String, String)
      */
     RequestSpecification keyStore(String pathToJks, String password);
 
@@ -703,25 +740,6 @@ public interface RequestSpecification extends RequestSender {
     RequestSpecification keyStore(File pathToJks, String password);
 
     /**
-     * Apply a trust store. For example
-     * <pre>
-     * given().trustStore("/truststore_javanet.jks", "test1234"). ..
-     * </pre>
-     * </p>
-     * <p>
-     * Note that this is just a shortcut for:
-     * <pre>
-     * given().config(RestAssured.config().sslConfig(sslConfig().trustStore(pathToJks, password));
-     * </pre>
-     * </p>
-     *
-     * @param path     The path to the trust store. REST Assured will first look in the classpath and if not found it will look for the JKS in the local file-system.
-     * @param password The store pass
-     * @return The request specification
-     */
-    RequestSpecification trustStore(String path, String password);
-
-    /**
      * Use a trust store located on the file-system. See {@link #trustStore(String, String)} for more details.
      * <p>
      * Note that this is just a shortcut for:
@@ -733,7 +751,7 @@ public interface RequestSpecification extends RequestSender {
      * @param path     The path to trust storefile on the file-system
      * @param password The password for the keystore
      * @return The request specification
-     * @see #keyStore(String, String)
+     * @see #trustStore(String, String)
      */
     RequestSpecification trustStore(File path, String password);
 
@@ -748,18 +766,22 @@ public interface RequestSpecification extends RequestSender {
      *
      * @param trustStore The truststore.
      * @return The request specification
-     * @see #keyStore(String, String)
+     * @see #trustStore(String, String)
      */
     RequestSpecification trustStore(KeyStore trustStore);
 
     /**
-     * Use the supplied keystore for HTTPS requests. Shortcut for:
+     * Use the supplied key store for the client certificate sent to a server that asks for one (see
+     * {@link #keyStore(String, String)}). Shortcut for:
      * <p>
      * <pre>
      * given().config(RestAssured.config().sslConfig(sslConfig().keyStore(keyStore));
      * </pre>
      * </p>
      * <p/>
+     * If the private key in the key store is protected by a password, set it with
+     * {@link io.restassured.config.SSLConfig#keyStore(String)}, for example
+     * <code>given().config(RestAssured.config().sslConfig(sslConfig().keyStore(keyStore).keyStore("password")))</code>.
      *
      * @param keyStore The keyStore.
      * @return The request specification
@@ -842,7 +864,7 @@ public interface RequestSpecification extends RequestSender {
      * <pre>
      * Header first = new Header("headerName1", "headerValue1");
      * Header second = new Header("headerName2", "headerValue2");
-     * Headers headers = new Header(first, second);
+     * Headers headers = new Headers(first, second);
      * given().headers(headers).then().expect().body(equalTo("something")).when().get("/headers");
      * </pre>
      * <p/>
@@ -1102,8 +1124,8 @@ public interface RequestSpecification extends RequestSender {
      * <pre>
      *     given().
      *              csrf("/users").
-     *              formParm("firstName", "John")
-     *              formParm("lastName", "Doe")
+     *              formParm("firstName", "John").
+     *              formParm("lastName", "Doe").
      *     when().
      *              post("/users").
      *     then().
@@ -1248,19 +1270,28 @@ public interface RequestSpecification extends RequestSender {
      * <p/>
      * This is useful when you want to reuse an entire specification across multiple requests.
      * <p/>
-     * The specification passed to this method is merged with the current specification. Note that the supplied specification
-     * can overwrite data in the current specification. The following settings are overwritten:
+     * The specification passed to this method is merged with the current specification. Settings that the supplied specification
+     * only has from the defaults (such as {@link io.restassured.RestAssured#baseURI}, {@link io.restassured.RestAssured#port}, {@link io.restassured.RestAssured#authentication} or
+     * {@link io.restassured.RestAssured#requestSpecification}) are not copied. The following settings are overwritten when the supplied specification sets them:
      * <ul>
-     * <li>Port</li>
-     * <li>Authentication scheme</
-     * <li>Content type</li>
+     * <li>Base URI, base path and port</li>
+     * <li>Authentication scheme (setting it to none, for example with <code>auth().none()</code>, also removes authentication filters such as form authentication)</li>
      * <li>Request body</li>
+     * <li>Proxy</li>
+     * <li>URL encoding enabled/disabled</li>
+     * <li>Content-Type allowed/disallowed: <code>contentType(..)</code> allows it and <code>noContentType()</code> disallows it. A Content-Type set with
+     * <code>header(..)</code> doesn't count, so it doesn't undo <code>noContentType()</code> of the current specification.</li>
+     * <li>CSRF disabled (<code>disableCsrf()</code>)</li>
+     * <li>Each part of the configuration that the supplied specification configured (for example the SSL config, which holds the keystore)</li>
+     * <li>Method and path (these are only set on the specification that a filter receives)</li>
      * </ul>
      * The following settings are merged:
      * <ul>
-     * <li>Parameters</li>
+     * <li>Parameters, query parameters, form parameters and path parameters (a parameter of the supplied specification replaces one with the same name)</li>
+     * <li>Multi-part form data parameters</li>
      * <li>Cookies</li>
-     * <li>Headers</li>
+     * <li>Headers (a Content-Type or Accept header of the supplied specification replaces the current one by default, see {@link io.restassured.config.HeaderConfig})</li>
+     * <li>Filters (a filter that is already present isn't added again, and an authentication filter replaces the current ones)</li>
      * </ul>
      * <p/>
      *

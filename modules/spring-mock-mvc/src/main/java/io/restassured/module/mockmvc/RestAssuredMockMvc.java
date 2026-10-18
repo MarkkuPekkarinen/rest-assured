@@ -16,6 +16,7 @@
 
 package io.restassured.module.mockmvc;
 
+import io.restassured.internal.support.CommonVersionCheck;
 import io.restassured.RestAssured;
 import io.restassured.config.LogConfig;
 import io.restassured.filter.log.LogDetail;
@@ -43,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static io.restassured.config.LogConfig.logConfig;
 import static io.restassured.internal.common.assertion.AssertParameter.notNull;
@@ -50,8 +52,29 @@ import static io.restassured.internal.common.assertion.AssertParameter.notNull;
 /**
  * The Spring MVC module's equivalent of {@link RestAssured}. This is the starting point of the DSL.
  * <p>Note that some Javadoc is copied from Spring MVC's test documentation.</p>
+ * <h2>Thread safety</h2>
+ * <p>
+ * The static fields and methods of this class (such as {@link #mockMvc(MockMvc)}, {@link #config}, {@link #basePath},
+ * {@link #resultHandlers(ResultHandler, ResultHandler...)} and {@link #postProcessors(RequestPostProcessor, RequestPostProcessor...)})
+ * are global defaults shared by all threads. When tests run in parallel:
+ * <ul>
+ * <li>Set the static defaults once, before the tests start running in parallel, and don't change them while requests
+ * are being made. Calling {@link #given()} from many threads at once is safe, and each call takes a copy of the
+ * defaults.</li>
+ * <li>Put values that differ between tests in the request specification instead, for example
+ * <code>given().mockMvc(mockMvc)</code> or <code>given().spec(spec)</code> with a specification made by a
+ * {@link MockMvcRequestSpecBuilder}.</li>
+ * <li>Don't execute the same request specification from several threads at once; start a new one with
+ * {@link #given()} in each thread.</li>
+ * <li>Result handlers and request post processors added here are shared by all requests and must be thread safe.</li>
+ * </ul>
  */
 public class RestAssuredMockMvc {
+
+    static {
+        // First, so that an older rest-assured-common gives a message instead of a NoClassDefFoundError
+        CommonVersionCheck.verify();
+    }
 
     /**
      * Set a {@link org.springframework.test.web.servlet.MockMvc} instance that REST Assured will use when making requests unless overwritten
@@ -71,7 +94,7 @@ public class RestAssuredMockMvc {
      * <p/>
      * <code>newConfig()</code> can be statically imported from {@link RestAssuredMockMvcConfig}.
      */
-    public static RestAssuredMockMvcConfig config;
+    public static volatile RestAssuredMockMvcConfig config;
     /**
      * Specify a default request specification that will be sent with each request. E,g.
      * <pre>
@@ -80,7 +103,7 @@ public class RestAssuredMockMvc {
      * <p/>
      * means that for each request by Rest Assured "parameter1" will be equal to "value1".
      */
-    public static MockMvcRequestSpecification requestSpecification;
+    public static volatile MockMvcRequestSpecification requestSpecification;
 
     /**
      * Specify a default response specification that will be sent with each request. E,g.
@@ -90,19 +113,21 @@ public class RestAssuredMockMvc {
      * <p/>
      * means that for each response Rest Assured will assert that the status code is equal to 200.
      */
-    public static ResponseSpecification responseSpecification = null;
+    public static volatile ResponseSpecification responseSpecification = null;
 
-    private static List<ResultHandler> resultHandlers = new ArrayList<>();
+    // Copy-on-write so that given() can copy them while another thread adds to them
+    private static final List<ResultHandler> resultHandlers = new CopyOnWriteArrayList<>();
 
-    private static List<RequestPostProcessor> requestPostProcessors = new ArrayList<>();
+    private static final List<RequestPostProcessor> requestPostProcessors = new CopyOnWriteArrayList<>();
 
-    private static MockMvcFactory mockMvcFactory = null;
+    // MockMvcRequestSpecBuilder reads this field reflectively
+    private static volatile MockMvcFactory mockMvcFactory = null;
 
     /**
      * The base path that's used by REST assured when making requests. The base path is prepended to the request path.
      * Default value is <code>/</code>.
      */
-    public static String basePath = "/";
+    public static volatile String basePath = "/";
 
     /**
      * Defines a global authentication scheme that'll be used for all requests (if not overridden). Usage example:
@@ -115,7 +140,7 @@ public class RestAssuredMockMvc {
      * @see #principalWithCredentials(Object, Object, String...)
      * @see #authentication(Object)
      */
-    public static MockMvcAuthenticationScheme authentication;
+    public static volatile MockMvcAuthenticationScheme authentication;
 
     /**
      * This is usually the entry-point of the API if you need to specify parameters or a body in the request. For example:
@@ -229,7 +254,7 @@ public class RestAssuredMockMvc {
      * The {@link org.springframework.web.servlet.DispatcherServlet}
      * will use the context to discover Spring MVC infrastructure and
      * application controllers in it. The context must have been configured with
-     * a {@link javax.servlet.ServletContext}.
+     * a {@link jakarta.servlet.ServletContext}.
      *
      * @param context            The web application context to use
      * @param mockMvcConfigurers {@link MockMvcConfigurer}'s to be applied when creating a {@link MockMvc} instance of this WebApplicationContext (optional)
@@ -252,14 +277,11 @@ public class RestAssuredMockMvc {
      */
     public static void resultHandlers(ResultHandler resultHandler, ResultHandler... resultHandlers) {
         notNull(resultHandler, ResultHandler.class);
-        RestAssuredMockMvc.resultHandlers.add(resultHandler);
-        if (resultHandlers != null && resultHandlers.length >= 1) {
-            Collections.addAll(RestAssuredMockMvc.resultHandlers, resultHandlers);
-        }
+        RestAssuredMockMvc.resultHandlers.addAll(asList(resultHandler, resultHandlers));
     }
 
     /**
-     * @return The defined list of result handlers
+     * @return A read-only view of the defined list of result handlers
      */
     public static List<ResultHandler> resultHandlers() {
         return Collections.unmodifiableList(resultHandlers);
@@ -278,14 +300,21 @@ public class RestAssuredMockMvc {
      */
     public static void postProcessors(RequestPostProcessor postProcessor, RequestPostProcessor... additionalPostProcessors) {
         notNull(postProcessor, RequestPostProcessor.class);
-        RestAssuredMockMvc.requestPostProcessors.add(postProcessor);
-        if (additionalPostProcessors != null && additionalPostProcessors.length >= 1) {
-            Collections.addAll(RestAssuredMockMvc.requestPostProcessors, additionalPostProcessors);
+        RestAssuredMockMvc.requestPostProcessors.addAll(asList(postProcessor, additionalPostProcessors));
+    }
+
+    @SafeVarargs
+    private static <T> List<T> asList(T first, T... additional) {
+        List<T> list = new ArrayList<>();
+        list.add(first);
+        if (additional != null) {
+            Collections.addAll(list, additional);
         }
+        return list;
     }
 
     /**
-     * @return The defined list of request post processors
+     * @return A read-only view of the defined list of request post processors
      */
     public static List<RequestPostProcessor> postProcessors() {
         return Collections.unmodifiableList(requestPostProcessors);
@@ -462,6 +491,30 @@ public class RestAssuredMockMvc {
     }
 
     /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters. E.g. if path is "/book/{hotelId}/{roomNumber}" you can do <code>query("/book/{hotelName}/{roomNumber}", "Hotels R Us", 22);</code>.
+     * @return The response of the request.
+     */
+    public static MockMvcResponse query(String path, Object... pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
+     * Perform a QUERY request to a <code>path</code>. Normally the path doesn't have to be fully-qualified e.g. you don't need to
+     * specify the path as <tt>http://localhost:8080/path</tt>. In this case it's enough to use <tt>/path</tt>.
+     *
+     * @param path       The path to send the request to.
+     * @param pathParams The path parameters.
+     * @return The response of the request.
+     */
+    public static MockMvcResponse query(String path, Map<String, ?> pathParams) {
+        return given().query(path, pathParams);
+    }
+
+    /**
      * Perform a GET request to a <code>uri</code>.
      *
      * @param uri The uri to send the request to.
@@ -529,6 +582,16 @@ public class RestAssuredMockMvc {
      */
     public static MockMvcResponse options(URI uri) {
         return given().options(uri);
+    }
+
+    /**
+     * Perform a QUERY request to a <code>uri</code>.
+     *
+     * @param uri The uri to send the request to.
+     * @return The response of the request.
+     */
+    public static MockMvcResponse query(URI uri) {
+        return given().query(uri);
     }
 
     /**
@@ -602,6 +665,16 @@ public class RestAssuredMockMvc {
     }
 
     /**
+     * Perform a QUERY request to a <code>url</code>.
+     *
+     * @param url The url to send the request to.
+     * @return The response of the request.
+     */
+    public static MockMvcResponse query(URL url) {
+        return given().query(url);
+    }
+
+    /**
      * Perform a GET request to the statically configured base path.
      *
      * @return The response of the GET request.
@@ -662,6 +735,15 @@ public class RestAssuredMockMvc {
      */
     public static MockMvcResponse options() {
         return given().options();
+    }
+
+    /**
+     * Perform a QUERY request to the statically configured base path.
+     *
+     * @return The response of the request.
+     */
+    public static MockMvcResponse query() {
+        return given().query();
     }
     
     /**
@@ -912,6 +994,7 @@ public class RestAssuredMockMvc {
      * @return The assigned config or a new config is no config is assigned
      */
     public static RestAssuredMockMvcConfig config() {
-        return config == null ? new RestAssuredMockMvcConfig() : config;
+        RestAssuredMockMvcConfig currentConfig = config;
+        return currentConfig == null ? new RestAssuredMockMvcConfig() : currentConfig;
     }
 }

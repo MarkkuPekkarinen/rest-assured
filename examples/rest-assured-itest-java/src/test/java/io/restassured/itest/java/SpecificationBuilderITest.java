@@ -25,7 +25,7 @@ import io.restassured.specification.RequestSpecification;
 import io.restassured.specification.ResponseSpecification;
 import org.apache.commons.io.output.WriterOutputStream;
 import org.hamcrest.Matchers;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -384,7 +384,7 @@ public class SpecificationBuilderITest extends WithJetty {
         assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +
@@ -411,7 +411,7 @@ public class SpecificationBuilderITest extends WithJetty {
         assertThat(writer.toString(), equalTo(String.format("HTTP/1.1 200 OK%n" +
                 "Content-Type: application/json;charset=utf-8%n" +
                 "Content-Length: 59%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "{\n" +
                 "    \"firstName\": \"John\",\n" +

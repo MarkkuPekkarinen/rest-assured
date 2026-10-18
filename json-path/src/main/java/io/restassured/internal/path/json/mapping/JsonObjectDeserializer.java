@@ -12,6 +12,7 @@ import org.apache.commons.lang3.Validate;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.Locale;
 
 public class JsonObjectDeserializer {
 
@@ -51,6 +52,8 @@ public class JsonObjectDeserializer {
 
         if (ObjectMapperResolver.isJackson2InClassPath()) {
             return (T) deserializeWithJackson2(deserializationCtx, jsonPathConfig.jackson2ObjectMapperFactory());
+        } else if (ObjectMapperResolver.isJackson3InClassPath()) {
+            return (T) deserializeWithJackson3(deserializationCtx, jsonPathConfig.jackson3ObjectMapperFactory());
         } else if (ObjectMapperResolver.isJackson1InClassPath()) {
             return (T) deserializeWithJackson1(deserializationCtx, jsonPathConfig.jackson1ObjectMapperFactory());
         } else if (ObjectMapperResolver.isGsonInClassPath()) {
@@ -65,7 +68,9 @@ public class JsonObjectDeserializer {
 
     @SuppressWarnings("unchecked")
     private static <T> T deserializeWithObjectMapper(ObjectDeserializationContext ctx, JsonParserType mapperType, JsonPathConfig config) {
-        if (mapperType == JsonParserType.JACKSON_2 && ObjectMapperResolver.isJackson2InClassPath()) {
+        if (mapperType == JsonParserType.JACKSON_3 && ObjectMapperResolver.isJackson3InClassPath()) {
+            return (T) deserializeWithJackson3(ctx, config.jackson3ObjectMapperFactory());
+        } else if (mapperType == JsonParserType.JACKSON_2 && ObjectMapperResolver.isJackson2InClassPath()) {
             return (T) deserializeWithJackson2(ctx, config.jackson2ObjectMapperFactory());
         } else if (mapperType == JsonParserType.JACKSON_1 && ObjectMapperResolver.isJackson1InClassPath()) {
             return (T) deserializeWithJackson1(ctx, config.jackson1ObjectMapperFactory());
@@ -76,7 +81,7 @@ public class JsonObjectDeserializer {
         } else if (mapperType == JsonParserType.JSONB && ObjectMapperResolver.isYassonInClassPath()) {
             return (T) deserializeWithJsonb(ctx, config.jsonbObjectMapperFactory());
         } else {
-            String lowerCase = mapperType.toString().toLowerCase();
+            String lowerCase = mapperType.toString().toLowerCase(Locale.ROOT);
             throw new IllegalArgumentException(String.format("Cannot deserialize object using %s because %s doesn't exist in the classpath.", mapperType, lowerCase));
         }
     }
@@ -91,6 +96,10 @@ public class JsonObjectDeserializer {
 
     static Object deserializeWithJackson2(ObjectDeserializationContext ctx, Jackson2ObjectMapperFactory factory) {
         return new JsonPathJackson2ObjectDeserializer(factory).deserialize(ctx);
+    }
+
+    static Object deserializeWithJackson3(ObjectDeserializationContext ctx, Jackson3ObjectMapperFactory factory) {
+        return new JsonPathJackson3ObjectDeserializer(factory).deserialize(ctx);
     }
 
     static Object deserializeWithJohnzon(ObjectDeserializationContext ctx, JohnzonObjectMapperFactory factory) {

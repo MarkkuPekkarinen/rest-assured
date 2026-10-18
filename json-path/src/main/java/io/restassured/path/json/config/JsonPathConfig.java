@@ -16,7 +16,9 @@
 
 package io.restassured.path.json.config;
 
+import io.restassured.common.mapper.resolver.ObjectMapperResolver;
 import io.restassured.path.json.mapper.factory.*;
+import io.restassured.internal.path.json.mapping.LegacyJsonObjectMapperFactories;
 import io.restassured.path.json.mapping.JsonPathObjectDeserializer;
 import org.apache.commons.lang3.StringUtils;
 
@@ -27,18 +29,28 @@ import static io.restassured.path.json.config.JsonPathConfig.NumberReturnType.FL
 
 /**
  * Allows you to configure how JsonPath will handle JSON numbers and object mappers. By default JsonPath and body expectations
- * in REST Assured will return floats for numbers that are less than or equal to {@link Float#MAX_VALUE} or doubles
- * for larger numbers. In Groovy 1.8.5 they changed so that all numbers are now BigDecimals. If you prefer that
+ * in REST Assured will return floats for numbers whose magnitude is less than or equal to {@link Float#MAX_VALUE} or doubles
+ * for larger magnitudes. In Groovy 1.8.5 they changed so that all numbers are now BigDecimals. If you prefer that
  * you can configure the {@link NumberReturnType} to be {@link NumberReturnType#BIG_DECIMAL}.
  */
 public class JsonPathConfig {
 
+    /**
+     * The default maximum length (in characters) of a JSON number token. Tokens longer than this
+     * are rejected before being converted to a number. This guards against CPU/heap exhaustion when
+     * constructing arbitrarily large numbers (e.g. {@link java.math.BigInteger}) from untrusted input.
+     * The value matches Jackson's {@code StreamReadConstraints} default.
+     */
+    public static final int DEFAULT_NUMBER_LENGTH_LIMIT = 1000;
+
     private final NumberReturnType numberReturnType;
+    private final int numberLengthLimit;
     private final JsonPathObjectDeserializer defaultDeserializer;
     private final JsonParserType defaultParserType;
     private final GsonObjectMapperFactory gsonObjectMapperFactory;
     private final Jackson1ObjectMapperFactory jackson1ObjectMapperFactory;
     private final Jackson2ObjectMapperFactory jackson2ObjectMapperFactory;
+    private final Jackson3ObjectMapperFactory jackson3ObjectMapperFactory;
     private final JohnzonObjectMapperFactory johnzonObjectMapperFactory;
     private final JsonbObjectMapperFactory jsonbObjectMapperFactory;
     private final String charset;
@@ -51,27 +63,37 @@ public class JsonPathConfig {
      */
     public JsonPathConfig(JsonPathConfig config) {
         this(config.numberReturnType(), config.defaultParserType(), config.gsonObjectMapperFactory(), config.jackson1ObjectMapperFactory(),
-                config.jackson2ObjectMapperFactory(), config.johnzonObjectMapperFactory(), config.jsonbObjectMapperFactory(),
-                config.defaultDeserializer(), config.charset());
+                config.jackson2ObjectMapperFactory(), config.jackson3ObjectMapperFactory(), config.johnzonObjectMapperFactory(), config.jsonbObjectMapperFactory(),
+                config.defaultDeserializer(), config.charset(), config.numberLengthLimit());
     }
 
     /**
      * Creates a new JsonPathConfig that is configured to return floats and doubles and use the systems default charset for JSON data.
      */
     public JsonPathConfig() {
-        this(FLOAT_AND_DOUBLE, null, new DefaultGsonObjectMapperFactory(), new DefaultJackson1ObjectMapperFactory(),
-                new DefaultJackson2ObjectMapperFactory(), new DefaultJohnzonObjectMapperFactory(), 
-                new DefaultYassonObjectMapperFactory(), null, defaultCharset());
+        this(FLOAT_AND_DOUBLE, null, newGsonObjectMapperFactoryOrNullIfNotInClasspath(), newJackson1ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJackson2ObjectMapperFactoryOrNullIfNotInClasspath(), newJackson3ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJohnzonObjectMapperFactoryOrNullIfNotInClasspath(), newYassinObjectMapperFactoryOrNullIfNotInClasspath(), null, defaultCharset(), DEFAULT_NUMBER_LENGTH_LIMIT);
     }
 
 
     /**
      * Create a new JsonPathConfig that returns JSON numbers as either Doubles and Floats or BigDecimals
      */
+    public JsonPathConfig(io.restassured.common.config.NumberReturnType numberReturnType) {
+        this(numberReturnType == null ? null : NumberReturnType.valueOf(numberReturnType.name()));
+    }
+
+    /**
+     * Create a new JsonPathConfig that returns JSON numbers as either Doubles and Floats or BigDecimals
+     *
+     * @deprecated Use {@link #JsonPathConfig(io.restassured.common.config.NumberReturnType)} instead. This enum is removed in REST Assured 8.0.0.
+     */
+    @Deprecated
     public JsonPathConfig(NumberReturnType numberReturnType) {
-        this(numberReturnType, null, new DefaultGsonObjectMapperFactory(), new DefaultJackson1ObjectMapperFactory(),
-                new DefaultJackson2ObjectMapperFactory(), new DefaultJohnzonObjectMapperFactory(), 
-                new DefaultYassonObjectMapperFactory(), null, defaultCharset());
+        this(numberReturnType, null, newGsonObjectMapperFactoryOrNullIfNotInClasspath(), newJackson1ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJackson2ObjectMapperFactoryOrNullIfNotInClasspath(), newJackson3ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJohnzonObjectMapperFactoryOrNullIfNotInClasspath(), newYassinObjectMapperFactoryOrNullIfNotInClasspath(), null, defaultCharset(), DEFAULT_NUMBER_LENGTH_LIMIT);
 
     }
 
@@ -79,26 +101,28 @@ public class JsonPathConfig {
      * Create a new JsonPathConfig that uses the <code>defaultCharset</code> when deserializing JSON data.
      */
     public JsonPathConfig(String defaultCharset) {
-        this(FLOAT_AND_DOUBLE, null, new DefaultGsonObjectMapperFactory(), new DefaultJackson1ObjectMapperFactory(),
-                new DefaultJackson2ObjectMapperFactory(), new DefaultJohnzonObjectMapperFactory(), 
-                new DefaultYassonObjectMapperFactory(), null, defaultCharset);
+        this(FLOAT_AND_DOUBLE, null, newGsonObjectMapperFactoryOrNullIfNotInClasspath(), newJackson1ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJackson2ObjectMapperFactoryOrNullIfNotInClasspath(), newJackson3ObjectMapperFactoryOrNullIfNotInClasspath(),
+                newJohnzonObjectMapperFactoryOrNullIfNotInClasspath(), newYassinObjectMapperFactoryOrNullIfNotInClasspath(), null, defaultCharset, DEFAULT_NUMBER_LENGTH_LIMIT);
 
     }
 
     private JsonPathConfig(NumberReturnType numberReturnType, JsonParserType parserType, GsonObjectMapperFactory gsonObjectMapperFactory,
                            Jackson1ObjectMapperFactory jackson1ObjectMapperFactory, Jackson2ObjectMapperFactory jackson2ObjectMapperFactory,
-                           JohnzonObjectMapperFactory johnzonObjectMapperFactory,JsonbObjectMapperFactory jsonbObjectMapperFactory, 
-                           JsonPathObjectDeserializer defaultDeserializer, String charset) {
+                           Jackson3ObjectMapperFactory jackson3ObjectMapperFactory, JohnzonObjectMapperFactory johnzonObjectMapperFactory,
+                           JsonbObjectMapperFactory jsonbObjectMapperFactory, JsonPathObjectDeserializer defaultDeserializer, String charset, int numberLengthLimit) {
         if (numberReturnType == null) throw new IllegalArgumentException("numberReturnType cannot be null");
         charset = StringUtils.trimToNull(charset);
         if (charset == null) throw new IllegalArgumentException("Charset cannot be empty");
         this.charset = charset;
         this.numberReturnType = numberReturnType;
+        this.numberLengthLimit = numberLengthLimit;
         this.defaultDeserializer = defaultDeserializer;
         this.defaultParserType = parserType;
         this.gsonObjectMapperFactory = gsonObjectMapperFactory;
         this.jackson1ObjectMapperFactory = jackson1ObjectMapperFactory;
         this.jackson2ObjectMapperFactory = jackson2ObjectMapperFactory;
+        this.jackson3ObjectMapperFactory = jackson3ObjectMapperFactory;
         this.johnzonObjectMapperFactory = johnzonObjectMapperFactory;
         this.jsonbObjectMapperFactory = jsonbObjectMapperFactory;
     }
@@ -119,8 +143,8 @@ public class JsonPathConfig {
      */
     public JsonPathConfig charset(String charset) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
 
 
@@ -134,14 +158,48 @@ public class JsonPathConfig {
      * @param numberReturnType The choice.
      * @return A new instance of JsonPathConfig with the given configuration
      */
+    public JsonPathConfig numberReturnType(io.restassured.common.config.NumberReturnType numberReturnType) {
+        return numberReturnType(numberReturnType == null ? null : NumberReturnType.valueOf(numberReturnType.name()));
+    }
+
+    /**
+     * Specifies if JsonPath should use floats and doubles or BigDecimals to represent Json numbers.
+     *
+     * @param numberReturnType The choice.
+     * @return A new instance of JsonPathConfig with the given configuration
+     * @deprecated Use {@link #numberReturnType(io.restassured.common.config.NumberReturnType)} instead. This enum is removed in REST Assured 8.0.0.
+     */
+    @Deprecated
     public JsonPathConfig numberReturnType(NumberReturnType numberReturnType) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
 
     public boolean shouldRepresentJsonNumbersAsBigDecimal() {
         return numberReturnType() == BIG_DECIMAL;
+    }
+
+    /**
+     * @return The maximum allowed length (in characters) of a JSON number token, or a negative value if unlimited.
+     */
+    public int numberLengthLimit() {
+        return numberLengthLimit;
+    }
+
+    /**
+     * Specifies the maximum allowed length (in characters) of a JSON number token. Number tokens longer than this
+     * are rejected before being converted to a number, guarding against CPU/heap exhaustion when constructing
+     * arbitrarily large numbers (such as {@link java.math.BigInteger}) from untrusted JSON. A value of {@code 0}
+     * rejects every number, and a negative value disables the check. Defaults to {@link #DEFAULT_NUMBER_LENGTH_LIMIT}.
+     *
+     * @param numberLengthLimit The maximum number token length, {@code 0} to reject all numbers, or a negative value to disable the check.
+     * @return A new instance of JsonPathConfig with the given configuration
+     */
+    public JsonPathConfig numberLengthLimit(int numberLengthLimit) {
+        return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
 
     public JsonParserType defaultParserType() {
@@ -160,6 +218,10 @@ public class JsonPathConfig {
         return jackson1ObjectMapperFactory() != null && jackson1ObjectMapperFactory().getClass() != DefaultJackson1ObjectMapperFactory.class;
     }
 
+    public boolean hasCustomJackson30ObjectMapperFactory() {
+        return jackson3ObjectMapperFactory() != null && jackson3ObjectMapperFactory().getClass() != DefaultJackson3ObjectMapperFactory.class;
+    }
+
     public boolean hasCustomJackson20ObjectMapperFactory() {
         return jackson2ObjectMapperFactory() != null && jackson2ObjectMapperFactory().getClass() != DefaultJackson2ObjectMapperFactory.class;
     }
@@ -167,7 +229,7 @@ public class JsonPathConfig {
     public boolean hasCustomJohnzonObjectMapperFactory() {
         return johnzonObjectMapperFactory() != null && johnzonObjectMapperFactory().getClass() != DefaultJohnzonObjectMapperFactory.class;
     }
-    
+
     public boolean hasCustomJsonbObjectMapperFactory() {
         return jsonbObjectMapperFactory() != null && jsonbObjectMapperFactory().getClass() != DefaultYassonObjectMapperFactory.class;
     }
@@ -179,8 +241,8 @@ public class JsonPathConfig {
      */
     public JsonPathConfig defaultParserType(JsonParserType defaultParserType) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
 
     public JsonPathObjectDeserializer defaultDeserializer() {
@@ -198,7 +260,8 @@ public class JsonPathConfig {
      */
     public JsonPathConfig defaultObjectDeserializer(JsonPathObjectDeserializer defaultObjectDeserializer) {
         return new JsonPathConfig(numberReturnType, null, gsonObjectMapperFactory, jackson1ObjectMapperFactory,
-                jackson2ObjectMapperFactory, johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultObjectDeserializer, charset);
+                jackson2ObjectMapperFactory, jackson3ObjectMapperFactory, johnzonObjectMapperFactory,
+                jsonbObjectMapperFactory, defaultObjectDeserializer, charset, numberLengthLimit);
     }
 
     public GsonObjectMapperFactory gsonObjectMapperFactory() {
@@ -212,8 +275,17 @@ public class JsonPathConfig {
      */
     public JsonPathConfig gsonObjectMapperFactory(GsonObjectMapperFactory gsonObjectMapperFactory) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
+    }
+
+    /**
+     * Specify a custom Gson object mapper factory.
+     *
+     * @param gsonObjectMapperFactory The object mapper factory
+     */
+    public JsonPathConfig gsonObjectMapperFactory(io.restassured.common.mapper.factory.GsonObjectMapperFactory gsonObjectMapperFactory) {
+        return gsonObjectMapperFactory(LegacyJsonObjectMapperFactories.toLegacy(gsonObjectMapperFactory));
     }
 
     public Jackson1ObjectMapperFactory jackson1ObjectMapperFactory() {
@@ -224,32 +296,67 @@ public class JsonPathConfig {
      * Specify a custom Jackson 1.0 object mapper factory.
      *
      * @param jackson1ObjectMapperFactory The object mapper factory
+     * @deprecated Jackson 1 support is removed in REST Assured 7.0.0. Use Jackson 2 or 3 instead.
      */
+    @Deprecated
     public JsonPathConfig jackson1ObjectMapperFactory(Jackson1ObjectMapperFactory jackson1ObjectMapperFactory) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
 
     public Jackson2ObjectMapperFactory jackson2ObjectMapperFactory() {
         return jackson2ObjectMapperFactory;
     }
-    
+
     public JohnzonObjectMapperFactory johnzonObjectMapperFactory() {
         return johnzonObjectMapperFactory;
     }
 
     /**
-     * Specify a custom Jackson 1.0 object mapper factory.
+     * Specify a custom Jackson 2.0 object mapper factory.
      *
      * @param jackson2ObjectMapperFactory The object mapper factory
      */
     public JsonPathConfig jackson2ObjectMapperFactory(Jackson2ObjectMapperFactory jackson2ObjectMapperFactory) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
     }
-    
+
+    /**
+     * Specify a custom Jackson 2.0 object mapper factory.
+     *
+     * @param jackson2ObjectMapperFactory The object mapper factory
+     */
+    public JsonPathConfig jackson2ObjectMapperFactory(io.restassured.common.mapper.factory.Jackson2ObjectMapperFactory jackson2ObjectMapperFactory) {
+        return jackson2ObjectMapperFactory(LegacyJsonObjectMapperFactories.toLegacy(jackson2ObjectMapperFactory));
+    }
+
+    public Jackson3ObjectMapperFactory jackson3ObjectMapperFactory() {
+        return jackson3ObjectMapperFactory;
+    }
+
+    /**
+     * Specify a custom Jackson 3.0 object mapper factory.
+     *
+     * @param jackson3ObjectMapperFactory The object mapper factory
+     */
+    public JsonPathConfig jackson3ObjectMapperFactory(Jackson3ObjectMapperFactory jackson3ObjectMapperFactory) {
+        return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
+            jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+            johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
+    }
+
+    /**
+     * Specify a custom Jackson 3.0 object mapper factory.
+     *
+     * @param jackson3ObjectMapperFactory The object mapper factory
+     */
+    public JsonPathConfig jackson3ObjectMapperFactory(io.restassured.common.mapper.factory.Jackson3ObjectMapperFactory jackson3ObjectMapperFactory) {
+        return jackson3ObjectMapperFactory(LegacyJsonObjectMapperFactories.toLegacy(jackson3ObjectMapperFactory));
+    }
+
     public JsonbObjectMapperFactory jsonbObjectMapperFactory() {
         return jsonbObjectMapperFactory;
     }
@@ -261,8 +368,17 @@ public class JsonPathConfig {
      */
     public JsonPathConfig jsonbObjectMapperFactory(JsonbObjectMapperFactory jsonbObjectMapperFactory) {
         return new JsonPathConfig(numberReturnType, defaultParserType, gsonObjectMapperFactory,
-                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, 
-                    johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset);
+                jackson1ObjectMapperFactory, jackson2ObjectMapperFactory, jackson3ObjectMapperFactory,
+                johnzonObjectMapperFactory, jsonbObjectMapperFactory, defaultDeserializer, charset, numberLengthLimit);
+    }
+
+    /**
+     * Specify a custom JSON-B object mapper factory.
+     *
+     * @param jsonbObjectMapperFactory The object mapper factory
+     */
+    public JsonPathConfig jsonbObjectMapperFactory(io.restassured.common.mapper.factory.JsonbObjectMapperFactory jsonbObjectMapperFactory) {
+        return jsonbObjectMapperFactory(LegacyJsonObjectMapperFactories.toLegacy(jsonbObjectMapperFactory));
     }
 
     /**
@@ -302,7 +418,10 @@ public class JsonPathConfig {
      * <ul>
      * <li>BIG_INTEGER</li>
      * </ul>
+     *
+     * @deprecated Use {@link io.restassured.common.config.NumberReturnType} instead. This enum is removed in REST Assured 8.0.0.
      */
+    @Deprecated
     public enum NumberReturnType {
         /**
          * Convert all non-integer numbers to floats and doubles (depending on the size of the number)
@@ -331,6 +450,29 @@ public class JsonPathConfig {
             return this.equals(FLOAT_AND_DOUBLE)
                     || this.equals(DOUBLE);
         }
+    }
 
+    private static GsonObjectMapperFactory newGsonObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isGsonInClassPath() ? new DefaultGsonObjectMapperFactory() : null;
+    }
+
+    private static Jackson1ObjectMapperFactory newJackson1ObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isJackson1InClassPath() ? new DefaultJackson1ObjectMapperFactory() : null;
+    }
+
+    private static Jackson2ObjectMapperFactory newJackson2ObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isJackson2InClassPath() ? new DefaultJackson2ObjectMapperFactory() : null;
+    }
+
+    private static Jackson3ObjectMapperFactory newJackson3ObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isJackson3InClassPath() ? new DefaultJackson3ObjectMapperFactory() : null;
+    }
+
+    private static JohnzonObjectMapperFactory newJohnzonObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isJohnzonInClassPath() ? new DefaultJohnzonObjectMapperFactory() : null;
+    }
+
+    private static JsonbObjectMapperFactory newYassinObjectMapperFactoryOrNullIfNotInClasspath() {
+        return ObjectMapperResolver.isYassonInClassPath() ? new DefaultYassonObjectMapperFactory() : null;
     }
 }

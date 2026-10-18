@@ -23,13 +23,13 @@ import io.restassured.http.ContentType.JSON
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.catchThrowable
 import org.hamcrest.Matchers.*
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 
 class RestAssuredKotlinExtensionsTest {
 
-    @Before
+    @BeforeEach
     fun `rest assured is configured`() {
         RestAssured.filters(Filter { _, _, _ ->
             ResponseBuilder().setStatusCode(200).setContentType(JSON).setBody("""{ "message" : "Hello World"}""").build()
@@ -53,6 +53,39 @@ class RestAssuredKotlinExtensionsTest {
             statusCode(200)
             body("message", equalTo("Hello World"))
         }
+    }
+
+    @Test
+    fun `query method can be used with rest assured kotlin extensions`() {
+        RestAssured.reset()
+        var method: String? = null
+        var body: Any? = null
+        var queryParams: Map<String, String>? = null
+        RestAssured.filters(Filter { requestSpec, _, _ ->
+            method = requestSpec.method
+            body = requestSpec.getBody()
+            queryParams = requestSpec.queryParams
+            ResponseBuilder().setStatusCode(200).setContentType(JSON).setBody("""{ "message" : "Hello World"}""").build()
+        })
+
+        try {
+            Given {
+                port(7000)
+                queryParam("limit", "10")
+                body("hello")
+            } When {
+                query("/the/path")
+            } Then {
+                statusCode(200)
+                body("message", equalTo("Hello World"))
+            }
+        } finally {
+            RestAssured.reset()
+        }
+
+        assertThat(method).isEqualTo("QUERY")
+        assertThat(body).isEqualTo("hello")
+        assertThat(queryParams).containsEntry("limit", "10")
     }
 
     @Test

@@ -41,7 +41,8 @@ import org.apache.commons.io.output.WriterOutputStream;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.assertj.core.api.Assertions;
 
 import java.io.PrintStream;
 import java.io.StringWriter;
@@ -86,13 +87,13 @@ public class FilterITest extends WithJetty {
         assertThat(writer.toString(), is(String.format("HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "ERROR%n" +
                 "HTTP/1.1 409 Conflict%n" +
                 "Content-Type: text/plain;charset=utf-8%n" +
                 "Content-Length: 5%n" +
-                "Server: Jetty(9.4.34.v20201102)%n" +
+                "Server: Jetty(9.4.58.v20250814)%n" +
                 "%n" +
                 "ERROR%n")));
     }
@@ -448,9 +449,7 @@ public class FilterITest extends WithJetty {
 
     @Test public void
     can_remove_both_unnamed_and_named_path_parameter_from_filter_and_order_is_maintained() {
-        exception.expect(IllegalArgumentException.class);
-        exception.expectMessage("Path parameters were not correctly defined. Redundant path parameters are: John3, Doe.");
-
+        Throwable thrown = Assertions.catchThrowable(() ->
         given().
                 pathParam("firstName", "John2").
                 filter((requestSpec, responseSpec, ctx) -> {
@@ -462,7 +461,11 @@ public class FilterITest extends WithJetty {
                     return ctx.next(requestSpec, responseSpec);
                 }).
         when().
-                get("/{firstName}/{lastName}", "John", "John3", "Doe");
+                get("/{firstName}/{lastName}", "John", "John3", "Doe"));
+
+        Assertions.assertThat(thrown)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Path parameters were not correctly defined. Redundant path parameters are: John3, Doe.");
     }
 
     @Test public void
